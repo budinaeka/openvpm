@@ -346,6 +346,30 @@ describe("health route", () => {
     expect(body).not.toContain("AIza-fallback");
   });
 
+  it("accepts an OpenAI-compatible provider key for hosted AI readiness", async () => {
+    mocks.billingEnforced.mockReturnValue(true);
+    stubHostedRequiredEnvs();
+    vi.stubEnv("AI_PROVIDER", "ai-budina");
+    vi.stubEnv("AI_MODEL", "bep-combo");
+    vi.stubEnv("AI_BASE_URL", "https://ai.budinaeka.my.id/v1");
+    vi.stubEnv("AI_API_KEY", "sk-custom-test");
+    vi.stubEnv("GOOGLE_API_KEY", "");
+    vi.stubEnv("ANTHROPIC_API_KEY", "");
+
+    const response = await GET();
+    const json = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(json.checks.hostedAi).toEqual({
+      ok: true,
+      detail: "Hosted AI envs present",
+    });
+    const body = JSON.stringify(json);
+    expect(body).not.toContain("AI_API_KEY");
+    expect(body).not.toContain("sk-custom-test");
+    expect(body).not.toContain("ai.budinaeka.my.id");
+  });
+
   it("fails hosted readiness when configured app URLs are not HTTPS origins", async () => {
     mocks.billingEnforced.mockReturnValue(true);
     stubHostedRequiredEnvs();

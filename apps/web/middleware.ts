@@ -60,7 +60,9 @@ export async function middleware(request: NextRequest) {
   // demo access. (Previously the root path bounced to the marketing site,
   // which dead-ended anyone who came straight to demo.openvpm.com to try it.)
   if (!token) {
-    const loginUrl = new URL("/login", request.url);
+    const publicBaseUrl =
+      process.env.NEXT_PUBLIC_APP_URL ?? process.env.NEXTAUTH_URL ?? request.url;
+    const loginUrl = new URL("/login", publicBaseUrl);
     const nextPath = `${pathname}${requestUrl.search}`;
     if (nextPath !== "/") {
       loginUrl.searchParams.set("next", nextPath);

@@ -210,5 +210,6 @@ tool, the key must also carry that tool's resource scope, such as
 `appointments:write` for booking or `records:write` for vitals/SOAP notes. Returns
 `{ data: { text, toolCalls, iterations, stopReason } }`, where `toolCalls`
 traces every tool the agent invoked. Returns `503` if the configured model
-provider is missing its key (`GOOGLE_API_KEY` or legacy
-`GOOGLE_GENERATIVE_AI_API_KEY` for Gemini, or `ANTHROPIC_API_KEY` for Claude).
+provider is missing its key (`AI_API_KEY` for OpenAI-compatible providers,
+`GOOGLE_API_KEY` or legacy `GOOGLE_GENERATIVE_AI_API_KEY` for Gemini, or
+`ANTHROPIC_API_KEY` for Claude).

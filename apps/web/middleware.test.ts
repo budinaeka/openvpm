@@ -93,6 +93,18 @@ describe("middleware security headers", () => {
     expectSecurityHeaders(response);
   });
 
+  it("uses the configured public app URL for protected-route login redirects behind a reverse proxy", async () => {
+    vi.stubEnv("NEXT_PUBLIC_APP_URL", "https://openvpm.example.com");
+    mocks.getToken.mockResolvedValue(null);
+
+    const response = await middleware(request("/patients"));
+
+    expect(response.headers.get("location")).toBe(
+      "https://openvpm.example.com/login?next=%2Fpatients"
+    );
+    expectSecurityHeaders(response);
+  });
+
   it("trims NEXTAUTH_SECRET before decoding protected-route sessions", async () => {
     vi.stubEnv("NEXTAUTH_SECRET", " test-secret ");
     mocks.getToken.mockResolvedValue({ sub: "user-1" });

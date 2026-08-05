@@ -69,15 +69,28 @@ const HOSTED_GOOGLE_AI_ENV_NAMES = [
   "GOOGLE_GENERATIVE_AI_API_KEY",
 ];
 const HOSTED_ANTHROPIC_AI_ENV_NAMES = ["ANTHROPIC_API_KEY"];
+const HOSTED_OPENAI_COMPATIBLE_AI_ENV_NAMES = ["AI_API_KEY"];
 
 // AI is provider-agnostic: the model is chosen by AI_MODEL and the provider is
-// inferred from the id, so require the matching provider key (Gemini vs Claude).
+// inferred from the id unless AI_PROVIDER selects an OpenAI-compatible endpoint.
 function activeAiModel(): string {
   return envValue("AI_MODEL") ?? envValue("AGENT_MODEL") ?? "claude-sonnet-4-6";
 }
 
+function activeAiProvider(): string | undefined {
+  return envValue("AI_PROVIDER")?.toLowerCase();
+}
+
 function isGeminiModel(model: string): boolean {
   return /^(google\/|models\/)?gemini/i.test(model);
+}
+
+function isOpenAiCompatibleAi(model: string): boolean {
+  const provider = activeAiProvider();
+  return Boolean(
+    provider &&
+      !["google", "gemini", "anthropic", "claude"].includes(provider)
+  ) || /^(openai\/|ai-budina\/)/i.test(model);
 }
 
 function hostedAiCheck(): { ok: boolean; detail: string } {
@@ -90,6 +103,12 @@ function hostedAiCheck(): { ok: boolean; detail: string } {
         ? "Hosted AI envs present"
         : "1 required hosted configuration value is missing",
     };
+  }
+  if (isOpenAiCompatibleAi(model)) {
+    return hostedEnvCheck(
+      HOSTED_OPENAI_COMPATIBLE_AI_ENV_NAMES,
+      "Hosted AI envs present"
+    );
   }
 
   return hostedEnvCheck(

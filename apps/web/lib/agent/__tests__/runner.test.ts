@@ -11,6 +11,7 @@ describe("isAgentConfigured (provider-agnostic)", () => {
     vi.stubEnv("AI_MODEL", " gemini-2.5-flash ");
     vi.stubEnv("GOOGLE_API_KEY", "");
     vi.stubEnv("GOOGLE_GENERATIVE_AI_API_KEY", "");
+    vi.stubEnv("AI_PROVIDER", "");
     vi.stubEnv("ANTHROPIC_API_KEY", "sk-ant-test"); // wrong provider's key
     expect(isAgentConfigured()).toBe(false);
     vi.stubEnv("GOOGLE_API_KEY", " AIza-test ");
@@ -22,6 +23,7 @@ describe("isAgentConfigured (provider-agnostic)", () => {
     vi.stubEnv("GOOGLE_API_KEY", "   ");
     vi.stubEnv("GOOGLE_GENERATIVE_AI_API_KEY", "AIza-fallback");
     vi.stubEnv("ANTHROPIC_API_KEY", "");
+    vi.stubEnv("AI_PROVIDER", "");
     expect(isAgentConfigured()).toBe(true);
   });
 
@@ -33,6 +35,7 @@ describe("isAgentConfigured (provider-agnostic)", () => {
 
   it("a Claude model is configured only with a non-blank Anthropic API key", () => {
     vi.stubEnv("AI_MODEL", "claude-sonnet-4-6");
+    vi.stubEnv("AI_PROVIDER", "");
     vi.stubEnv("ANTHROPIC_API_KEY", "   ");
     vi.stubEnv("GOOGLE_API_KEY", "AIza-test"); // wrong provider's key
     expect(isAgentConfigured()).toBe(false);
@@ -40,9 +43,35 @@ describe("isAgentConfigured (provider-agnostic)", () => {
     expect(isAgentConfigured()).toBe(true);
   });
 
+  it("an OpenAI-compatible custom provider uses AI_PROVIDER plus AI_API_KEY", () => {
+    vi.stubEnv("AI_PROVIDER", " ai-budina ");
+    vi.stubEnv("AI_MODEL", " bep-combo ");
+    vi.stubEnv("AI_BASE_URL", "https://ai.budinaeka.my.id/v1");
+    vi.stubEnv("AI_API_KEY", "   ");
+    vi.stubEnv("ANTHROPIC_API_KEY", "");
+    vi.stubEnv("GOOGLE_API_KEY", "");
+    expect(isAgentConfigured()).toBe(false);
+    vi.stubEnv("AI_API_KEY", " sk-custom-test ");
+    expect(isAgentConfigured()).toBe(true);
+  });
+
+  it("normalizes non-stream OpenAI-compatible responses mislabeled as SSE", async () => {
+    const { normalizeOpenAiCompatibleResponse } = await import("../runner");
+    const upstream = new Response('{"choices":[]}data: [DONE]\n', {
+      status: 200,
+      headers: { "content-type": "text/event-stream" },
+    });
+
+    const normalized = await normalizeOpenAiCompatibleResponse(upstream);
+
+    expect(normalized.headers.get("content-type")).toBe("application/json");
+    expect(await normalized.text()).toBe('{"choices":[]}');
+  });
+
   it("defaults to Claude when AI_MODEL/AGENT_MODEL are blank", () => {
     vi.stubEnv("AI_MODEL", " ");
     vi.stubEnv("AGENT_MODEL", "   ");
+    vi.stubEnv("AI_PROVIDER", "");
     vi.stubEnv("GOOGLE_API_KEY", "");
     vi.stubEnv("ANTHROPIC_API_KEY", "sk-ant-test");
     expect(isAgentConfigured()).toBe(true);
@@ -51,6 +80,7 @@ describe("isAgentConfigured (provider-agnostic)", () => {
   it("trims the legacy AGENT_MODEL fallback before choosing the provider", () => {
     vi.stubEnv("AI_MODEL", "");
     vi.stubEnv("AGENT_MODEL", " google/gemini-2.5-flash ");
+    vi.stubEnv("AI_PROVIDER", "");
     vi.stubEnv("GOOGLE_API_KEY", "AIza-test");
     vi.stubEnv("ANTHROPIC_API_KEY", "");
     expect(isAgentConfigured()).toBe(true);

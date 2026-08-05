@@ -255,11 +255,12 @@ function AgentRunner() {
         </p>
       ) : (
         <p>
-          Set <code className="break-all font-mono">GOOGLE_API_KEY</code> or{" "}
-          <code className="break-all font-mono">GOOGLE_GENERATIVE_AI_API_KEY</code>{" "}
-          for Gemini, or{" "}
-          <code className="break-all font-mono">ANTHROPIC_API_KEY</code> for
-          Claude, to enable agent runs.
+          Set <code className="break-all font-mono">AI_API_KEY</code> and{" "}
+          <code className="break-all font-mono">AI_BASE_URL</code> for an
+          OpenAI-compatible provider, <code className="break-all font-mono">GOOGLE_API_KEY</code>{" "}
+          or <code className="break-all font-mono">GOOGLE_GENERATIVE_AI_API_KEY</code>{" "}
+          for Gemini, or <code className="break-all font-mono">ANTHROPIC_API_KEY</code>{" "}
+          for Claude, to enable agent runs.
         </p>
       )}
     </div>
