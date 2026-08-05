@@ -7,6 +7,7 @@ import {
 } from "ai";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { createAnthropic } from "@ai-sdk/anthropic";
+import { createOpenAI } from "@ai-sdk/openai";
 import {
   AGENT_TOOLS,
   AgentPracticeNotFoundError,
@@ -38,7 +39,9 @@ You help practice staff by using the provided tools to read and act on practice 
 - For any drug dose, use calculate_drug_dose and present it as a reference range that the prescribing clinician must verify. Never present a dose as a final prescribing decision.
 - Before booking an appointment, confirm you have the right client and patient (use find_client / get_patient_summary first when ids are not given).
 - Only create SOAP notes when staff explicitly asks you to draft or record one; keep notes factual, concise, and ready for clinician review.
-- Be concise and clinical. Surface warnings the tools return.`;
+- Be concise and clinical. Surface warnings the tools return.
+
+You have access to VetClaw veterinary reference skills through list_vetclaw_skills and get_vetclaw_skill. When staff asks a clinical question (drug interactions, toxicology, anesthesia protocols, species-specific medicine, dermatology workups, etc.), call list_vetclaw_skills first to find the right skill, then get_vetclaw_skill to load its reference material before answering. Use search_veterinary_adverse_events and top_adverse_reactions to check FDA adverse-event data for drugs the practice is considering.`;
 
 export interface AgentToolCall {
   name: string;
@@ -57,7 +60,7 @@ export interface AgentRunResult {
 export class AgentNotConfiguredError extends Error {
   constructor() {
     super(
-      "OpenVPM Agent is not configured. Set an AI key (GOOGLE_API_KEY or GOOGLE_GENERATIVE_AI_API_KEY for Gemini, or ANTHROPIC_API_KEY for Claude) to enable agent runs."
+      "OpenVPM Agent is not configured. Set an AI key (AI_API_KEY for an OpenAI-compatible provider, GOOGLE_API_KEY or GOOGLE_GENERATIVE_AI_API_KEY for Gemini, or ANTHROPIC_API_KEY for Claude) to enable agent runs."
     );
     this.name = "AgentNotConfiguredError";
   }
@@ -89,9 +92,25 @@ function activeModelId(override?: string): string {
   );
 }
 
+function activeProvider(): string | undefined {
+  return nonBlank(process.env.AI_PROVIDER)?.toLowerCase();
+}
+
 /** Google (Gemini) vs Anthropic (Claude) inferred from the model id. */
 function isGoogleModel(modelId: string): boolean {
   return /^(google\/|models\/)?gemini/i.test(modelId);
+}
+
+function isAnthropicModel(modelId: string): boolean {
+  return /^(anthropic\/)?claude/i.test(modelId);
+}
+
+function isOpenAiCompatibleProvider(modelId: string): boolean {
+  const provider = activeProvider();
+  return Boolean(
+    provider &&
+      !["google", "gemini", "anthropic", "claude"].includes(provider)
+  ) || /^(openai\/|ai-budina\/)/i.test(modelId);
 }
 
 function googleApiKey(): string | undefined {
@@ -105,8 +124,43 @@ function anthropicApiKey(): string | undefined {
   return nonBlank(process.env.ANTHROPIC_API_KEY);
 }
 
+function openAiCompatibleApiKey(): string | undefined {
+  return nonBlank(process.env.AI_API_KEY) ?? nonBlank(process.env.OPENAI_API_KEY);
+}
+
+function openAiCompatibleBaseUrl(): string | undefined {
+  return nonBlank(process.env.AI_BASE_URL) ?? nonBlank(process.env.OPENAI_BASE_URL);
+}
+
+export async function normalizeOpenAiCompatibleResponse(
+  response: Response
+): Promise<Response> {
+  const contentType = response.headers.get("content-type") ?? "";
+  if (!contentType.includes("text/event-stream")) return response;
+
+  const text = await response.text();
+  const normalized = text.replace(/\s*data:\s*\[DONE\]\s*$/, "").trim();
+  const headers = new Headers(response.headers);
+  headers.set("content-type", "application/json");
+  headers.delete("content-length");
+  return new Response(normalized, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
+async function openAiCompatibleFetch(
+  input: Parameters<typeof fetch>[0],
+  init?: Parameters<typeof fetch>[1]
+): Promise<Response> {
+  return normalizeOpenAiCompatibleResponse(await fetch(input, init));
+}
+
 function hasProviderKey(modelId: string): boolean {
-  return isGoogleModel(modelId) ? Boolean(googleApiKey()) : Boolean(anthropicApiKey());
+  if (isGoogleModel(modelId)) return Boolean(googleApiKey());
+  if (isOpenAiCompatibleProvider(modelId)) return Boolean(openAiCompatibleApiKey());
+  return Boolean(anthropicApiKey());
 }
 
 /** Whether the configured provider has its API key set. */
@@ -130,6 +184,19 @@ function resolveModel(modelId: string) {
   if (isGoogleModel(modelId)) {
     const google = createGoogleGenerativeAI({ apiKey: googleApiKey() });
     return google(modelId.replace(/^google\//, ""));
+  }
+  if (isOpenAiCompatibleProvider(modelId)) {
+    const openai = createOpenAI({
+      apiKey: openAiCompatibleApiKey(),
+      baseURL: openAiCompatibleBaseUrl(),
+      name: activeProvider() ?? "openai-compatible",
+      fetch: openAiCompatibleFetch,
+    });
+    return openai.chat(modelId.replace(/^(openai|ai-budina)\//, ""));
+  }
+  if (isAnthropicModel(modelId)) {
+    const anthropic = createAnthropic({ apiKey: anthropicApiKey() });
+    return anthropic(modelId.replace(/^anthropic\//, ""));
   }
   const anthropic = createAnthropic({ apiKey: anthropicApiKey() });
   return anthropic(modelId.replace(/^anthropic\//, ""));

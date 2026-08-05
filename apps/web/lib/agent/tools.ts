@@ -13,6 +13,7 @@ import {
   inArray,
   not,
   gt,
+  sql,
 } from "drizzle-orm";
 import type { Database } from "@openpims/db/client";
 import {
@@ -61,6 +62,12 @@ import {
   normalizeSoapSection,
   SOAP_SECTION_MAX_LENGTH,
 } from "@/lib/records/soap-content";
+import {
+  loadIndex,
+  loadSkill,
+  searchAdverseEvents,
+  topReactions as topVetReactions,
+} from "./vetclaw";
 
 /**
  * The agent's "hands": typed tools that operate the practice's data, always
@@ -110,6 +117,10 @@ const agentOptionalNotesInput = z
   .trim()
   .max(AGENT_NOTES_MAX_LENGTH)
   .optional();
+
+const agentOverviewInput = z.object({
+  includeSamples: z.boolean().optional().default(false),
+});
 
 const formularyDrugIdInput = z
   .string()
@@ -971,7 +982,310 @@ const findOpenSlotsTool: AgentTool = {
   },
 };
 
+const databaseOverview: AgentTool = {
+  name: "database_overview",
+  description:
+    "Read a safe practice-scoped database overview: counts of active clients, patients, appointments, overdue vaccinations, SOAP notes, doctors, and rooms. Optionally include a few sample client/patient/appointment rows so the agent can answer broad questions about what data exists.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      includeSamples: {
+        type: "boolean",
+        description: "When true, include a small sample of active clients, patients, and upcoming appointments.",
+      },
+    },
+  },
+  zod: agentOverviewInput,
+  readOnly: true,
+  async execute(args, ctx) {
+    const { includeSamples } = this.zod.parse(args) as { includeSamples: boolean };
+    const [practice] = await ctx.db
+      .select({ id: practices.id })
+      .from(practices)
+      .where(and(eq(practices.id, ctx.practiceId), isNull(practices.deletedAt)))
+      .limit(1);
+    if (!practice) throw new AgentPracticeNotFoundError();
+
+    const [
+      [clientCount],
+      [patientCount],
+      [appointmentCount],
+      [upcomingAppointmentCount],
+      [overdueVaccinationCount],
+      [soapNoteCount],
+      [doctorCount],
+      [roomCount],
+    ] = await Promise.all([
+      ctx.db
+        .select({ value: sql<number>`count(*)` })
+        .from(clients)
+        .where(and(eq(clients.practiceId, ctx.practiceId), isNull(clients.deletedAt))),
+      ctx.db
+        .select({ value: sql<number>`count(*)` })
+        .from(patients)
+        .where(and(eq(patients.practiceId, ctx.practiceId), isNull(patients.deletedAt))),
+      ctx.db
+        .select({ value: sql<number>`count(*)` })
+        .from(appointments)
+        .where(and(eq(appointments.practiceId, ctx.practiceId), isNull(appointments.deletedAt))),
+      ctx.db
+        .select({ value: sql<number>`count(*)` })
+        .from(appointments)
+        .where(
+          and(
+            eq(appointments.practiceId, ctx.practiceId),
+            isNull(appointments.deletedAt),
+            gte(appointments.startTime, new Date())
+          )
+        ),
+      ctx.db
+        .select({ value: sql<number>`count(*)` })
+        .from(vaccinationRecords)
+        .where(
+          and(
+            eq(vaccinationRecords.practiceId, ctx.practiceId),
+            isNull(vaccinationRecords.deletedAt),
+            lt(vaccinationRecords.nextDueDate, formatDateInputForTimeZone(new Date(), null))
+          )
+        ),
+      ctx.db
+        .select({ value: sql<number>`count(*)` })
+        .from(soapNotes)
+        .where(and(eq(soapNotes.practiceId, ctx.practiceId), isNull(soapNotes.deletedAt))),
+      ctx.db
+        .select({ value: sql<number>`count(*)` })
+        .from(users)
+        .where(
+          and(
+            eq(users.practiceId, ctx.practiceId),
+            eq(users.role, "veterinarian"),
+            isNull(users.deletedAt)
+          )
+        ),
+      ctx.db
+        .select({ value: sql<number>`count(*)` })
+        .from(rooms)
+        .where(and(eq(rooms.practiceId, ctx.practiceId), isNull(rooms.deletedAt))),
+    ]);
+
+    const counts = {
+      clients: Number(clientCount?.value ?? 0),
+      patients: Number(patientCount?.value ?? 0),
+      appointments: Number(appointmentCount?.value ?? 0),
+      upcomingAppointments: Number(upcomingAppointmentCount?.value ?? 0),
+      overdueVaccinations: Number(overdueVaccinationCount?.value ?? 0),
+      soapNotes: Number(soapNoteCount?.value ?? 0),
+      doctors: Number(doctorCount?.value ?? 0),
+      rooms: Number(roomCount?.value ?? 0),
+    };
+
+    if (!includeSamples) return { counts };
+
+    const [clientSamples, patientSamples, appointmentSamples] = await Promise.all([
+      ctx.db
+        .select({ id: clients.id, firstName: clients.firstName, lastName: clients.lastName })
+        .from(clients)
+        .where(and(eq(clients.practiceId, ctx.practiceId), isNull(clients.deletedAt)))
+        .orderBy(desc(clients.createdAt))
+        .limit(5),
+      ctx.db
+        .select({ id: patients.id, name: patients.name, species: patients.species, status: patients.status })
+        .from(patients)
+        .where(and(eq(patients.practiceId, ctx.practiceId), isNull(patients.deletedAt)))
+        .orderBy(desc(patients.createdAt))
+        .limit(5),
+      ctx.db
+        .select({
+          id: appointments.id,
+          startTime: appointments.startTime,
+          status: appointments.status,
+          patientName: patients.name,
+        })
+        .from(appointments)
+        .leftJoin(
+          patients,
+          and(
+            eq(appointments.patientId, patients.id),
+            eq(patients.practiceId, ctx.practiceId),
+            isNull(patients.deletedAt)
+          )
+        )
+        .where(
+          and(
+            eq(appointments.practiceId, ctx.practiceId),
+            isNull(appointments.deletedAt),
+            gte(appointments.startTime, new Date())
+          )
+        )
+        .orderBy(asc(appointments.startTime))
+        .limit(5),
+    ]);
+
+    return {
+      counts,
+      samples: {
+        clients: clientSamples.map((c) => ({ id: c.id, name: clientName(c.firstName, c.lastName) })),
+        patients: patientSamples,
+        upcomingAppointments: appointmentSamples,
+      },
+    };
+  },
+};
+
+// ---------------------------------------------------------------------------
+// VetClaw tools — veterinary skill library + openFDA (read-only)
+// ---------------------------------------------------------------------------
+
+const VETCLAW_QUERY_MAX_LENGTH = 100;
+const VETCLAW_SKILL_NAME_MAX_LENGTH = 64;
+
+const listVetclawSkills: AgentTool = {
+  name: "list_vetclaw_skills",
+  description:
+    "List available VetClaw veterinary reference skills (name, category, description). " +
+    "Call first to discover which clinical skill to load for a veterinary case. " +
+    "Categories: clinical, databases, literature, pharma, safety, species. " +
+    "51 skills covering anesthesia, cardiology, dermatology, toxicology, pharmacology, " +
+    "species-specific medicine, and more.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      category: {
+        type: "string",
+        description: "Optional category filter (clinical, databases, literature, pharma, safety, species).",
+      },
+      query: {
+        type: "string",
+        description: "Optional case-insensitive substring matched against skill name/description.",
+      },
+    },
+    required: [],
+  },
+  zod: z.object({
+    category: z.string().max(VETCLAW_QUERY_MAX_LENGTH).optional(),
+    query: z.string().max(VETCLAW_QUERY_MAX_LENGTH).optional(),
+  }),
+  readOnly: true,
+  async execute(args) {
+    const { category, query } = this.zod.parse(args) as {
+      category?: string;
+      query?: string;
+    };
+    const index = loadIndex();
+    let skills = index.skills;
+    if (category) {
+      skills = skills.filter((s) => s.category === category);
+    }
+    if (query) {
+      const q = query.toLowerCase();
+      skills = skills.filter(
+        (s) =>
+          s.name.toLowerCase().includes(q) ||
+          s.description.toLowerCase().includes(q)
+      );
+    }
+    return skills.map((s) => ({
+      name: s.name,
+      category: s.category,
+      description: s.description,
+    }));
+  },
+};
+
+const getVetclawSkill: AgentTool = {
+  name: "get_vetclaw_skill",
+  description:
+    "Return the full markdown of a VetClaw veterinary skill by name (e.g. 'toxicology-calculator'). " +
+    "Load the relevant skill before reasoning about a clinical veterinary case.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      name: {
+        type: "string",
+        description: "Skill name (kebab-case) from list_vetclaw_skills.",
+      },
+    },
+    required: ["name"],
+  },
+  zod: z.object({
+    name: z.string().min(1).max(VETCLAW_SKILL_NAME_MAX_LENGTH),
+  }),
+  readOnly: true,
+  async execute(args) {
+    const { name } = this.zod.parse(args) as { name: string };
+    const skill = loadSkill(name);
+    if (!skill) {
+      return { error: `Unknown skill '${name}'. Call list_vetclaw_skills to see valid names.` };
+    }
+    return { name: skill.name, path: skill.path, content: skill.content };
+  },
+};
+
+const searchVeterinaryAdverseEvents: AgentTool = {
+  name: "search_veterinary_adverse_events",
+  description:
+    "Search the FDA openFDA animal & veterinary adverse-event database. " +
+    "Filter by species, drug, breed, and/or reaction. Returns US adverse-event reports.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      species: { type: "string", description: "e.g. DOG, CAT, HORSE, CATTLE, BIRD" },
+      drug: { type: "string", description: "Drug name (e.g. Carprofen, Ivermectin)" },
+      reaction: { type: "string", description: "Adverse reaction (e.g. Vomiting, Seizure)" },
+      breed: { type: "string", description: "Breed name (e.g. Labrador Retriever)" },
+      limit: { type: "integer", description: "Max results (default 10, max 100)." },
+    },
+    required: [],
+  },
+  zod: z.object({
+    species: z.string().max(50).optional(),
+    drug: z.string().max(100).optional(),
+    reaction: z.string().max(200).optional(),
+    breed: z.string().max(100).optional(),
+    limit: z.number().int().min(1).max(100).optional().default(10),
+  }),
+  readOnly: true,
+  async execute(args) {
+    const params = this.zod.parse(args) as {
+      species?: string;
+      drug?: string;
+      reaction?: string;
+      breed?: string;
+      limit: number;
+    };
+    return searchAdverseEvents(params);
+  },
+};
+
+const topAdverseReactions: AgentTool = {
+  name: "top_adverse_reactions",
+  description:
+    "Count the most-reported adverse reactions for a species (optionally filtered by drug). " +
+    "Returns ranked reaction names with counts from the openFDA database.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      species: { type: "string", description: "Species (e.g. DOG, CAT, HORSE)" },
+      drug: { type: "string", description: "Optional drug name to filter by." },
+    },
+    required: ["species"],
+  },
+  zod: z.object({
+    species: z.string().min(1).max(50),
+    drug: z.string().max(100).optional(),
+  }),
+  readOnly: true,
+  async execute(args) {
+    const { species, drug } = this.zod.parse(args) as {
+      species: string;
+      drug?: string;
+    };
+    return topVetReactions(species, drug);
+  },
+};
+
 export const AGENT_TOOLS: AgentTool[] = [
+  databaseOverview,
   findClient,
   getPatientSummary,
   listAppointments,
@@ -982,6 +1296,10 @@ export const AGENT_TOOLS: AgentTool[] = [
   listTreatmentPlans,
   recordVitalSigns,
   recordSoapNote,
+  listVetclawSkills,
+  getVetclawSkill,
+  searchVeterinaryAdverseEvents,
+  topAdverseReactions,
 ];
 
 export function getTool(name: string): AgentTool | undefined {
