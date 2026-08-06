@@ -11,6 +11,7 @@ import { OnboardingJourneyProvider } from "@/components/onboarding/journey-overl
 import { WelcomeProvider } from "@/components/welcome/welcome-provider";
 import { BrandTheme } from "@/components/brand/brand-theme";
 import { VerifyEmailBanner } from "@/components/layout/verify-email-banner";
+import { trpc } from "@/lib/trpc";
 
 export default function DashboardLayout({
   children,
@@ -19,6 +20,15 @@ export default function DashboardLayout({
 }) {
   const [searchOpen, setSearchOpen] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+
+  const { data: practice } = trpc.settings.getPractice.useQuery();
+
+  // Sync the browser tab title to the practice name.
+  useEffect(() => {
+    document.title = practice?.name
+      ? `${practice.name} — OpenVPM`
+      : "OpenVPM: Open-Source Veterinary Practice Management";
+  }, [practice?.name]);
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
     if ((e.metaKey || e.ctrlKey) && e.key === "k") {
