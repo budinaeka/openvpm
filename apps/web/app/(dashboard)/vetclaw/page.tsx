@@ -19,12 +19,19 @@ import {
   FileText,
   Pill,
   ArrowRight,
+  Sparkles,
+  ArrowUp,
+  Bot,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { EmptyState } from "@/components/common/empty-state";
+import {
+  AGENT_INSTRUCTION_MAX_LENGTH,
+  isAgentInstructionValid,
+} from "@/lib/agent/policy";
 
 // ---------------------------------------------------------------------------
 // Category icons & labels
@@ -91,6 +98,39 @@ function VetclawBrowser() {
   const [selectedSkill, setSelectedSkill] = useState<string | null>(null);
   const [expandedSkill, setExpandedSkill] = useState<string | null>(null);
 
+  // ── Agent ask bar ──
+  const [agentInstruction, setAgentInstruction] = useState("");
+  const agentRun = trpc.agent.run.useMutation();
+  const agentStatus = trpc.agent.status.useQuery();
+  const [agentReply, setAgentReply] = useState<string | null>(null);
+  const [agentLoading, setAgentLoading] = useState(false);
+  const agentConfigured = agentStatus.data?.configured ?? false;
+  const agentInstructionInvalid =
+    agentInstruction.length > 0 && !isAgentInstructionValid(agentInstruction);
+  const agentSubmitDisabled =
+    !agentConfigured || !isAgentInstructionValid(agentInstruction) || agentRun.isPending || agentLoading;
+
+  const submitAgentAsk = () => {
+    if (agentSubmitDisabled) return;
+    const text = agentInstruction.trim();
+    setAgentInstruction("");
+    setAgentReply(null);
+    setAgentLoading(true);
+    agentRun.mutate(
+      { instruction: text },
+      {
+        onSuccess: (data) => {
+          setAgentReply(data.text);
+          setAgentLoading(false);
+        },
+        onError: (err) => {
+          setAgentReply(err.message);
+          setAgentLoading(false);
+        },
+      }
+    );
+  };
+
   const trimmedSearch = search.trim();
 
   const { data, isLoading, error } = trpc.vetclaw.listSkills.useQuery(
@@ -128,6 +168,63 @@ function VetclawBrowser() {
           across {categories.length} categories. Evidence-based, species-first.
         </p>
       </div>
+
+      {/* ── Agent Ask Bar ── */}
+      <div className="rounded-2xl border border-border bg-card p-2 shadow-sm focus-within:border-primary/40">
+        <div className="flex items-center gap-2">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+            <Bot className="h-4 w-4 text-primary" />
+          </div>
+          <textarea
+            value={agentInstruction}
+            onChange={(e) => {
+              setAgentInstruction(e.target.value);
+              const el = e.target;
+              el.style.height = "auto";
+              el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                submitAgentAsk();
+              }
+            }}
+            rows={1}
+            maxLength={AGENT_INSTRUCTION_MAX_LENGTH}
+            disabled={!agentConfigured || agentLoading}
+            placeholder={
+              agentConfigured
+                ? "Ask about veterinary topics — the agent can pull VetClaw skills, check FDA data, and more. Enter to send."
+                : "Agent is not configured. Set AI_API_KEY to enable."
+            }
+            className="max-h-28 w-full resize-none bg-transparent px-2 py-1.5 text-sm outline-none placeholder:text-muted-foreground"
+          />
+          <Button
+            type="button"
+            size="icon"
+            onClick={submitAgentAsk}
+            disabled={agentSubmitDisabled}
+            aria-label="Send"
+            className="h-8 w-8 shrink-0 rounded-full"
+          >
+            {agentLoading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <ArrowUp className="h-4 w-4" />
+            )}
+          </Button>
+        </div>
+      </div>
+
+      {/* Agent reply */}
+      {agentReply !== null && (
+        <div className="rounded-lg border border-border bg-muted/40 p-4 text-sm">
+          <div className="flex items-start gap-2">
+            <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+            <div className="whitespace-pre-wrap">{agentReply}</div>
+          </div>
+        </div>
+      )}
 
       {/* Search + Filter */}
       <div className="flex flex-col gap-3 sm:flex-row">
