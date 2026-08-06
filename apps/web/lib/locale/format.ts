@@ -10,6 +10,7 @@ const COUNTRY_LOCALE: Record<string, string> = {
   IE: "en-IE",
   CA: "en-CA",
   AU: "en-AU",
+  ID: "id-ID",
 };
 
 export function localeForCountry(country?: string | null): string {
@@ -62,6 +63,8 @@ export function regionDefaults(country?: string | null): RegionDefaults {
       return { currency: "cad", taxRatePercent: "5.00", timezone: "America/Toronto" };
     case "AU":
       return { currency: "aud", taxRatePercent: "10.00", timezone: "Australia/Sydney" };
+    case "ID":
+      return { currency: "idr", taxRatePercent: "11.00", timezone: "Asia/Jakarta" };
     default:
       return { currency: "usd", taxRatePercent: "8.00", timezone: "America/New_York" };
   }

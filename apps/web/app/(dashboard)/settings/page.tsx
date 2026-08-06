@@ -147,6 +147,9 @@ const TIMEZONES = [
   "Europe/London",
   "Europe/Dublin",
   "Australia/Sydney",
+  "Asia/Jakarta",
+  "Asia/Makassar",
+  "Asia/Jayapura",
 ];
 
 // Supported regions (ISO 3166-1 alpha-2). US-first; others are UK-ready.
@@ -156,9 +159,10 @@ const COUNTRIES: { code: string; label: string }[] = [
   { code: "IE", label: "Ireland" },
   { code: "CA", label: "Canada" },
   { code: "AU", label: "Australia" },
+  { code: "ID", label: "Indonesia" },
 ];
 
-const CURRENCIES = ["usd", "gbp", "eur", "cad", "aud"];
+const CURRENCIES = ["usd", "gbp", "eur", "cad", "aud", "idr"];
 
 const PRESET_COLORS = [
   "#0d9488",

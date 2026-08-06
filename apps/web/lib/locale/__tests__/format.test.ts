@@ -59,12 +59,18 @@ describe("regionDefaults", () => {
       taxRatePercent: "20.00",
       timezone: "Europe/London",
     });
+    expect(regionDefaults("ID")).toMatchObject({
+      currency: "idr",
+      taxRatePercent: "11.00",
+      timezone: "Asia/Jakarta",
+    });
   });
 });
 
 describe("localeForCountry", () => {
   it("maps known countries and falls back to en-US", () => {
     expect(localeForCountry("GB")).toBe("en-GB");
+    expect(localeForCountry("ID")).toBe("id-ID");
     expect(localeForCountry("xx")).toBe("en-US");
     expect(localeForCountry(null)).toBe("en-US");
   });

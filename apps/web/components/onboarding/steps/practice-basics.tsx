@@ -17,6 +17,7 @@ const COUNTRIES: { code: string; label: string }[] = [
   { code: "IE", label: "Ireland" },
   { code: "CA", label: "Canada" },
   { code: "AU", label: "Australia" },
+  { code: "ID", label: "Indonesia" },
 ];
 
 // Mirrors the TIMEZONES list on the settings page.
