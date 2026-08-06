@@ -121,7 +121,7 @@ export function Sidebar({
           )}
           {!isCollapsed && (
             <span className="font-heading text-lg font-semibold">
-              OpenVPM
+              {branding?.name ?? "OpenVPM"}
             </span>
           )}
         </Link>
