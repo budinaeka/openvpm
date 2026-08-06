@@ -170,8 +170,8 @@ function VetclawBrowser() {
       </div>
 
       {/* ── Agent Ask Bar ── */}
-      <div className="rounded-2xl border border-border bg-card p-2 shadow-sm focus-within:border-primary/40">
-        <div className="flex items-center gap-2">
+      <div className="rounded-2xl border border-border bg-card p-4 shadow-sm focus-within:border-primary/40">
+        <div className="flex items-start gap-3">
           <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10">
             <Bot className="h-4 w-4 text-primary" />
           </div>
@@ -181,7 +181,7 @@ function VetclawBrowser() {
               setAgentInstruction(e.target.value);
               const el = e.target;
               el.style.height = "auto";
-              el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
+              el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
             }}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
@@ -189,7 +189,7 @@ function VetclawBrowser() {
                 submitAgentAsk();
               }
             }}
-            rows={1}
+            rows={2}
             maxLength={AGENT_INSTRUCTION_MAX_LENGTH}
             disabled={!agentConfigured || agentLoading}
             placeholder={
