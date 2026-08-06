@@ -2,7 +2,7 @@ export const COMMUNICATION_SUBJECT_MAX_LENGTH = 255;
 export const COMMUNICATION_CONTENT_MAX_LENGTH = 5000;
 export const SMS_COMMUNICATION_CONTENT_MAX_LENGTH = 1600;
 
-export type CommunicationComposeChannel = "sms" | "email" | "portal";
+export type CommunicationComposeChannel = "sms" | "email" | "portal" | "whatsapp";
 
 export function communicationContentMaxLength(
   channel: CommunicationComposeChannel

@@ -179,7 +179,7 @@ async function practiceTimeZone(
 const createCommunicationInput = z
   .object({
     clientId: z.string().uuid(),
-    channel: z.enum(["phone", "sms", "email", "portal"]),
+    channel: z.enum(["phone", "sms", "email", "portal", "whatsapp"]),
     direction: z.enum(["inbound", "outbound"]),
     subject: z.string().trim().max(COMMUNICATION_SUBJECT_MAX_LENGTH).optional(),
     content: z

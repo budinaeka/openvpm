@@ -21,6 +21,7 @@ export const channelEnum = pgEnum("comm_channel", [
   "sms",
   "email",
   "portal",
+  "whatsapp",
 ]);
 
 export const directionEnum = pgEnum("comm_direction", [
