@@ -44,7 +44,7 @@ import { communicationStatusLabel } from "@/lib/communications/status";
 import { toast } from "sonner";
 
 type FilterTab = "all" | "unread" | "sent";
-type Channel = "phone" | "sms" | "email" | "portal";
+type Channel = "phone" | "sms" | "email" | "portal" | "whatsapp";
 
 type InboxListItem = {
   id: string;
@@ -95,6 +95,7 @@ const channelIcons: Record<Channel, React.ElementType> = {
   sms: MessageSquare,
   email: Mail,
   portal: Globe,
+  whatsapp: MessageSquare,
 };
 
 const channelLabels: Record<Channel, string> = {
@@ -102,6 +103,7 @@ const channelLabels: Record<Channel, string> = {
   sms: "SMS",
   email: "Email",
   portal: "Portal",
+  whatsapp: "WA",
 };
 
 function dateInputDayNumber(value: string): number | null {
@@ -1161,6 +1163,7 @@ export default function InboxPage() {
                     className="rounded-md border border-input bg-background px-3 py-1.5 text-sm"
                   >
                     <option value="sms">SMS</option>
+                    <option value="whatsapp">WhatsApp</option>
                     <option value="email">Email</option>
                     <option value="portal">Portal</option>
                   </select>

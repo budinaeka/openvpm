@@ -18,6 +18,7 @@ import { normalizeE164 } from "@/lib/messaging";
 import { hasNonBlankMessagingSender } from "@/lib/messaging/sender-query";
 import { isQuietHours } from "@/lib/messaging/reminders";
 import { sendSms } from "@/lib/sms";
+import { sendWhatsAppMessage, isKirimdevConfigured } from "@/lib/messaging/kirimdev";
 import { listOffsetInput } from "./pagination";
 import {
   emailSuppressionSendBlockMessage,
@@ -744,7 +745,7 @@ export const communicationsRouter = createRouter({
 
       const isDeliverableOutbound =
         input.direction === "outbound" &&
-        (input.channel === "sms" || input.channel === "email");
+        (input.channel === "sms" || input.channel === "email" || input.channel === "whatsapp");
 
       const [client] = await ctx.db
         .select({
@@ -819,6 +820,7 @@ export const communicationsRouter = createRouter({
 
       let smsRecipient: string | null = null;
       let smsSenderLocationId: string | undefined;
+      let waRecipient: string | null = null;
       if (input.direction === "outbound" && input.channel === "sms") {
         if (!client.phone) {
           throw new TRPCError({
@@ -883,6 +885,29 @@ export const communicationsRouter = createRouter({
         smsSenderLocationId = smsSender.locationId;
       }
 
+      // WhatsApp: validate phone + Kirimdev config, no SMS consent needed
+      if (input.direction === "outbound" && input.channel === "whatsapp") {
+        if (!client.phone) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Client does not have a phone number on file",
+          });
+        }
+        if (!isKirimdevConfigured()) {
+          throw new TRPCError({
+            code: "PRECONDITION_FAILED",
+            message: "WhatsApp sending is not configured (KIRIMDEV_API_KEY + KIRIMDEV_PHONE_NUMBER_ID)",
+          });
+        }
+        waRecipient = normalizeE164(client.phone);
+        if (!waRecipient) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Client phone number must be a valid E.164 number",
+          });
+        }
+      }
+
       const clientEmail =
         input.direction === "outbound" && input.channel === "email"
           ? normalizeEmailSuppressionAddress(client.email)
@@ -941,6 +966,7 @@ export const communicationsRouter = createRouter({
         success: boolean;
         id?: string;
         sid?: string;
+        messageId?: string;
         error?: string;
       };
       let providerMessageId: string | undefined;
@@ -953,6 +979,12 @@ export const communicationsRouter = createRouter({
             locationId: smsSenderLocationId,
           });
           providerMessageId = deliveryResult.sid;
+        } else if (input.channel === "whatsapp") {
+          deliveryResult = await sendWhatsAppMessage(
+            waRecipient!,
+            content,
+          );
+          providerMessageId = deliveryResult.messageId;
         } else {
           deliveryResult = await sendEmail({
             to: clientEmail!,
