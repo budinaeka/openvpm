@@ -41,7 +41,7 @@ export function RevenueLineChart({
         <YAxis
           tick={{ fontSize: 12 }}
           className="text-muted-foreground"
-          tickFormatter={(value) => `$${value}`}
+          tickFormatter={(value) => formatCurrency(value)}
         />
         <Tooltip
           formatter={(value: number) => [formatCurrency(value), "Revenue"]}
