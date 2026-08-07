@@ -28,6 +28,11 @@ function openvpmPhoneNumberId(): string {
   return process.env.OPENVPM_KIRIMDEV_PHONE_NUMBER_ID?.trim() ?? "";
 }
 
+function hermesOwnerPhones(): string[] {
+  const raw = process.env.HERMES_OWNER_PHONES?.trim() ?? "";
+  return raw.split(",").map(s => s.trim()).filter(Boolean);
+}
+
 function hermesWebhookUrl(): string {
   return (
     process.env.HERMES_KIRIMDEV_WEBHOOK_URL?.trim() ??
@@ -306,12 +311,20 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true });
   }
 
-  const clinicPhoneId = openvpmPhoneNumberId();
+  // Route by sender: owner → Hermes, others → clinic inbox
+  // (since both Hermes assistant & clinic share the same phone_number_id)
+  const ownerPhones = hermesOwnerPhones();
   let hasHermesMessage = false;
   let hasClinicMessage = false;
 
   for (const msg of messages) {
-    if (msg.phoneNumberId === clinicPhoneId) {
+    const isOwner = ownerPhones.includes(msg.customerPhone);
+
+    if (isOwner) {
+      // Owner messages → forward to Hermes plugin
+      hasHermesMessage = true;
+    } else {
+      // Non-owner messages → clinic inbox
       hasClinicMessage = true;
 
       const practiceId = await findPracticeForPhoneNumber(msg.phoneNumberId);
@@ -354,13 +367,10 @@ export async function POST(request: Request) {
       console.log(
         `[kirimdev-webhook] logged WA inbound: practice=${practiceId} client=${clientId ?? "unmatched"} phone=${msg.customerPhone}`
       );
-    } else {
-      // Not the clinic number — forward to Hermes plugin
-      hasHermesMessage = true;
     }
   }
 
-  // Forward messages for Hermes assistant number to the Hermes plugin
+  // Forward owner messages to Hermes plugin (raw body + all headers)
   if (hasHermesMessage) {
     await forwardToHermes(request, rawBody);
   }
