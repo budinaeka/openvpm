@@ -76,6 +76,7 @@ export default function NewSoapNotePage() {
     SOAP_NOTE_TEMPLATES[0]?.id ?? ""
   );
   const [replaceTemplateContent, setReplaceTemplateContent] = useState(false);
+  const [aiMode, setAiMode] = useState<"draft" | "ap">("draft");
   const canSave = hasSoapContent({ subjective, objective, assessment, plan });
   const canRecommendAssessmentPlan = Boolean(
     normalizeSoapSection(subjective) && normalizeSoapSection(objective)
@@ -113,20 +114,33 @@ export default function NewSoapNotePage() {
       setObjective(draftTextToHtml(draft.objective));
       setAssessment(draftTextToHtml(draft.assessment));
       setPlan(draftTextToHtml(draft.plan));
-      toast.success("Draft ready. Please review and edit before you save.");
+      toast.success(
+        aiMode === "ap"
+          ? "Assessment and Plan recommendations ready. Please review before you save."
+          : "Draft ready. Please review and edit before you save."
+      );
     },
     onError: (err) => toast.error(err.message),
   });
 
   function handleDraftWithAi() {
     if (!params.patientId || draftWithAi.isPending) return;
-    const hasSubjectiveAndObjective =
-      normalizeSoapSection(subjective) && normalizeSoapSection(objective);
-
-    if (!hasSubjectiveAndObjective && canSave) {
-      if (!window.confirm("Replace what you typed with the AI draft?")) return;
+    if (canSave && !window.confirm("Replace what you typed with the AI draft?")) {
+      return;
     }
 
+    setAiMode("draft");
+    draftWithAi.mutate({ patientId: params.patientId });
+  }
+
+  function handleRecommendAssessmentPlanWithAi() {
+    if (!params.patientId || draftWithAi.isPending) return;
+    if (!canRecommendAssessmentPlan) {
+      toast.error("Fill Subjective and Objective before recommending Assessment/Plan.");
+      return;
+    }
+
+    setAiMode("ap");
     draftWithAi.mutate({
       patientId: params.patientId,
       subjective,
@@ -259,16 +273,33 @@ export default function NewSoapNotePage() {
               onClick={handleDraftWithAi}
               disabled={!aiConfigured || draftWithAi.isPending}
             >
-              {draftWithAi.isPending ? (
+              {draftWithAi.isPending && aiMode === "draft" ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               ) : (
                 <Sparkles className="mr-2 h-4 w-4" />
               )}
-              {draftWithAi.isPending
+              {draftWithAi.isPending && aiMode === "draft"
                 ? "Drafting..."
-                : canRecommendAssessmentPlan
-                  ? "Recommend A/P with AI"
-                  : "Draft with AI"}
+                : "Draft with AI"}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleRecommendAssessmentPlanWithAi}
+              disabled={
+                !aiConfigured ||
+                draftWithAi.isPending ||
+                !canRecommendAssessmentPlan
+              }
+            >
+              {draftWithAi.isPending && aiMode === "ap" ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Sparkles className="mr-2 h-4 w-4" />
+              )}
+              {draftWithAi.isPending && aiMode === "ap"
+                ? "Recommending..."
+                : "Recommend A/P with AI"}
             </Button>
           </div>
           {!aiConfigured && !agentStatus.isLoading && (
