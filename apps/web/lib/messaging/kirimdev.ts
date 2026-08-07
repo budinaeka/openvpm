@@ -60,12 +60,12 @@ export async function sendWhatsAppMessage(
     };
   }
 
-  // Strip any leading "+" — Kirimdev expects digits-only E.164
-  const normalizedTo = to.replace(/^\+/, "");
+  // Keep leading "+" for E.164 — Kirimdev/Meta requires it in the payload
+  const normalizedTo = to.startsWith("+") ? to : `+${to}`;
 
   const url = `${kirimdevBaseUrl()}/${phoneNumberId}/messages`;
   const payload = {
-    phone_number_id: phoneNumberId,
+    messaging_product: "whatsapp",
     to: normalizedTo,
     type: "text",
     text: { body: text.slice(0, 4096) },
