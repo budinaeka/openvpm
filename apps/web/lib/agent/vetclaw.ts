@@ -122,19 +122,26 @@ export async function searchAdverseEvents(
   if (apiKey) urlParams.set("api_key", apiKey);
 
   const url = `${OPENFDA_BASE}?${urlParams.toString()}`;
-  const res = await fetch(url, {
-    headers: { Accept: "application/json" },
-    signal: AbortSignal.timeout(15_000),
-  });
+  try {
+    const res = await fetch(url, {
+      headers: { Accept: "application/json" },
+      signal: AbortSignal.timeout(15_000),
+    });
 
-  if (res.status === 404) {
-    return { meta: { results: { total: 0 } }, results: [] };
+    if (res.status === 404) {
+      return { meta: { results: { total: 0 } }, results: [] };
+    }
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      return { error: `openFDA returned HTTP ${res.status}: ${text.slice(0, 300)}`, results: [] };
+    }
+    return (await res.json()) as Record<string, unknown>;
+  } catch (error) {
+    return {
+      error: `openFDA request failed: ${error instanceof Error ? error.message : "unknown error"}`,
+      results: [],
+    };
   }
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    return { error: `openFDA returned HTTP ${res.status}: ${text.slice(0, 300)}` };
-  }
-  return (await res.json()) as Record<string, unknown>;
 }
 
 export async function topReactions(
@@ -155,17 +162,24 @@ export async function topReactions(
   if (apiKey) urlParams.set("api_key", apiKey);
 
   const url = `${OPENFDA_BASE}?${urlParams.toString()}`;
-  const res = await fetch(url, {
-    headers: { Accept: "application/json" },
-    signal: AbortSignal.timeout(15_000),
-  });
+  try {
+    const res = await fetch(url, {
+      headers: { Accept: "application/json" },
+      signal: AbortSignal.timeout(15_000),
+    });
 
-  if (res.status === 404) {
-    return { results: [] };
+    if (res.status === 404) {
+      return { results: [] };
+    }
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      return { error: `openFDA returned HTTP ${res.status}: ${text.slice(0, 300)}`, results: [] };
+    }
+    return (await res.json()) as Record<string, unknown>;
+  } catch (error) {
+    return {
+      error: `openFDA request failed: ${error instanceof Error ? error.message : "unknown error"}`,
+      results: [],
+    };
   }
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    return { error: `openFDA returned HTTP ${res.status}: ${text.slice(0, 300)}` };
-  }
-  return (await res.json()) as Record<string, unknown>;
 }
