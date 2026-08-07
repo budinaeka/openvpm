@@ -28,18 +28,6 @@ function openvpmPhoneNumberId(): string {
   return process.env.OPENVPM_KIRIMDEV_PHONE_NUMBER_ID?.trim() ?? "";
 }
 
-function hermesOwnerPhones(): string[] {
-  const raw = process.env.HERMES_OWNER_PHONES?.trim() ?? "";
-  return raw.split(",").map(s => s.trim()).filter(Boolean);
-}
-
-function hermesWebhookUrl(): string {
-  return (
-    process.env.HERMES_KIRIMDEV_WEBHOOK_URL?.trim() ??
-    "http://127.0.0.1:8646/webhook"
-  );
-}
-
 // ── Signature verification (Kirimdev X-Kirim-Signature) ────────────────
 
 function verifyKirimSignature(
@@ -236,36 +224,6 @@ function inboundDedupeKey(providerMessageId: string): string {
   return `kirimdev:inbound:${createHash("sha256").update(providerMessageId).digest("hex")}`;
 }
 
-// ── Forward to Hermes plugin ───────────────────────────────────────────
-
-async function forwardToHermes(
-  request: Request,
-  rawBody: Uint8Array
-): Promise<void> {
-  const url = hermesWebhookUrl();
-  const headers: Record<string, string> = {
-    "Content-Type": request.headers.get("content-type") ?? "application/json",
-  };
-  const sig = request.headers.get("x-kirim-signature");
-  if (sig) headers["X-Kirim-Signature"] = sig;
-  const eventId = request.headers.get("x-kirim-event-id");
-  if (eventId) headers["X-Kirim-Event-Id"] = eventId;
-
-  try {
-    await fetch(url, {
-      method: "POST",
-      headers,
-      body: Buffer.from(rawBody) as unknown as BodyInit,
-      signal: AbortSignal.timeout(10_000),
-    });
-  } catch (err) {
-    console.warn(
-      "[kirimdev-webhook] forward to Hermes plugin failed:",
-      err instanceof Error ? err.message : String(err)
-    );
-  }
-}
-
 // ── Route handler ──────────────────────────────────────────────────────
 
 export async function POST(request: Request) {
@@ -311,68 +269,52 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true });
   }
 
-  // Route by sender: owner → Hermes, others → clinic inbox
-  // (since both Hermes assistant & clinic share the same phone_number_id)
-  const ownerPhones = hermesOwnerPhones();
-  let hasHermesMessage = false;
+  // Semua inbound masuk inbox OpenVPM
   let hasClinicMessage = false;
 
   for (const msg of messages) {
-    const isOwner = ownerPhones.includes(msg.customerPhone);
+    hasClinicMessage = true;
 
-    if (isOwner) {
-      // Owner messages → forward to Hermes plugin
-      hasHermesMessage = true;
-    } else {
-      // Non-owner messages → clinic inbox
-      hasClinicMessage = true;
-
-      const practiceId = await findPracticeForPhoneNumber(msg.phoneNumberId);
-      if (!practiceId) {
-        console.warn(
-          `[kirimdev-webhook] no practice for phone_number_id ${msg.phoneNumberId}`
-        );
-        continue;
-      }
-
-      const clientId = await findClientByPhone(practiceId, msg.customerPhone);
-
-      const dedupeKey = msg.wamid ? inboundDedupeKey(msg.wamid) : undefined;
-
-      await withTenant(db, practiceId, async (tx) => {
-        await tx
-          .insert(communications)
-          .values({
-            practiceId,
-            clientId: clientId ?? undefined,
-            channel: "whatsapp",
-            direction: "inbound",
-            subject: `WA from ${msg.customerName || msg.customerPhone}`,
-            content: msg.content,
-            status: "delivered",
-            providerMessageId: msg.wamid || undefined,
-            dedupeKey,
-            ...(clientId
-              ? {
-                  assignedTo: latestAssignedToForClient(
-                    practiceId,
-                    clientId
-                  ),
-                }
-              : {}),
-          })
-          .onConflictDoNothing({ target: communications.dedupeKey });
-      });
-
-      console.log(
-        `[kirimdev-webhook] logged WA inbound: practice=${practiceId} client=${clientId ?? "unmatched"} phone=${msg.customerPhone}`
+    const practiceId = await findPracticeForPhoneNumber(msg.phoneNumberId);
+    if (!practiceId) {
+      console.warn(
+        `[kirimdev-webhook] no practice for phone_number_id ${msg.phoneNumberId}`
       );
+      continue;
     }
-  }
 
-  // Forward owner messages to Hermes plugin (raw body + all headers)
-  if (hasHermesMessage) {
-    await forwardToHermes(request, rawBody);
+    const clientId = await findClientByPhone(practiceId, msg.customerPhone);
+
+    const dedupeKey = msg.wamid ? inboundDedupeKey(msg.wamid) : undefined;
+
+    await withTenant(db, practiceId, async (tx) => {
+      await tx
+        .insert(communications)
+        .values({
+          practiceId,
+          clientId: clientId ?? undefined,
+          channel: "whatsapp",
+          direction: "inbound",
+          subject: `WA from ${msg.customerName || msg.customerPhone}`,
+          content: msg.content,
+          status: "delivered",
+          providerMessageId: msg.wamid || undefined,
+          dedupeKey,
+          ...(clientId
+            ? {
+                assignedTo: latestAssignedToForClient(
+                  practiceId,
+                  clientId
+                ),
+              }
+            : {}),
+        })
+        .onConflictDoNothing({ target: communications.dedupeKey });
+    });
+
+    console.log(
+      `[kirimdev-webhook] logged WA inbound: practice=${practiceId} client=${clientId ?? "unmatched"} phone=${msg.customerPhone}`
+    );
   }
 
   return NextResponse.json({ ok: true, logged: hasClinicMessage });
