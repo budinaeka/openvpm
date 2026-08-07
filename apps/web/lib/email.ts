@@ -530,3 +530,55 @@ export async function sendPaymentFailedEmail(data: {
   });
   return sendEmail({ to: data.to, subject, html, replyTo: brand.supportEmail });
 }
+
+// ---------------------------------------------------------------------------
+// Wellness plan reminder
+// ---------------------------------------------------------------------------
+
+export async function sendWellnessReminder(data: {
+  to: string;
+  clientName: string;
+  patientName: string;
+  planName: string;
+  planPrice: string;
+  billingDate: string;
+  practiceName: string;
+  practicePhone?: string;
+}): Promise<{ success: boolean; id?: string; error?: string }> {
+  const phoneLine = data.practicePhone
+    ? `<p style="margin:0;color:#111827;font-size:15px;line-height:1.6;">If you have any questions, please contact us at <strong>${data.practicePhone}</strong>.</p>`
+    : "";
+
+  const body = `
+    <p style="margin:0 0 16px;color:#111827;font-size:15px;line-height:1.6;">Hi ${data.clientName},</p>
+    <p style="margin:0 0 16px;color:#111827;font-size:15px;line-height:1.6;">This is a reminder that the wellness plan <strong>${data.planName}</strong> for <strong>${data.patientName}</strong> has an upcoming billing on <strong>${data.billingDate}</strong>.</p>
+    <table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;background-color:#f0fdf4;border:1px solid #dcfce7;border-radius:8px;margin-bottom:24px;">
+      <tr>
+        <td style="padding:20px 24px;">
+          <p style="margin:0 0 4px;color:#6b7280;font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;">Plan</p>
+          <p style="margin:0 0 16px;color:#0f172a;font-size:18px;font-weight:700;">${data.planName}</p>
+          <p style="margin:0 0 4px;color:#6b7280;font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;">Billing Amount</p>
+          <p style="margin:0 0 16px;color:#0f172a;font-size:16px;font-weight:600;">${data.planPrice}</p>
+          <p style="margin:0 0 4px;color:#6b7280;font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;">Billing Date</p>
+          <p style="margin:0;color:#0f172a;font-size:16px;font-weight:600;">${data.billingDate}</p>
+        </td>
+      </tr>
+    </table>
+    ${phoneLine}
+  `;
+
+  const footer = practiceFooter({
+    practiceName: data.practiceName,
+    practicePhone: data.practicePhone,
+  });
+
+  const html = emailLayout(data.practiceName, body, footer);
+
+  const result = await sendEmail({
+    to: data.to,
+    subject: `Wellness Plan Reminder: ${data.planName} for ${data.patientName}`,
+    html,
+  });
+
+  return { success: result.success, id: result.id, error: result.error };
+}

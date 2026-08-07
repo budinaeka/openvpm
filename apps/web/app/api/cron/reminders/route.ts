@@ -25,6 +25,10 @@ import { sendAppointmentReminder } from "@/lib/email";
 import { sendAppointmentReminderSms } from "@/lib/sms";
 import { isQuietHours, pickReminderChannel } from "@/lib/messaging/reminders";
 import { hasNonBlankMessagingSender } from "@/lib/messaging/sender-query";
+import {
+  isKirimdevConfigured,
+  sendAppointmentReminderWA,
+} from "@/lib/messaging/kirimdev";
 import { alertOps } from "@/lib/alerts";
 import { withSystem, withTenant } from "@/lib/tenant-db";
 import { cronAuthError } from "@/lib/cron-auth";
@@ -34,7 +38,7 @@ import {
   normalizeEmailSuppressionAddress,
 } from "@/lib/email-suppression";
 
-type ReminderChannel = "sms" | "email";
+type ReminderChannel = "whatsapp" | "sms" | "email";
 const REMINDER_PENDING_RECLAIM_MS = 30 * 60 * 1000;
 
 function formatAppointmentReminderDateTime(
@@ -421,12 +425,14 @@ export async function GET(request: Request) {
       let claimedCommunicationId: string | null = null;
       let claimedChannel: ReminderChannel = "email";
       try {
+        const hasWhatsApp = isKirimdevConfigured();
         const channel = pickReminderChannel({
           preferredContactMethod: appt.preferredContactMethod,
           phone: appt.clientPhone,
           smsConsent: appt.smsConsent ?? false,
           hasEmail: Boolean(normalizeEmailSuppressionAddress(appt.clientEmail)),
           quietHours: isQuietHours(now, appt.practiceTimezone),
+          hasWhatsApp,
         });
 
         if (channel === "skip") {
@@ -441,7 +447,9 @@ export async function GET(request: Request) {
 
         const dedupeKey = appointmentReminderDedupeKey(appt);
         const initialChannel: ReminderChannel =
-          channel === "sms" ? "sms" : "email";
+          channel === "whatsapp" ? "whatsapp"
+          : channel === "sms" ? "sms"
+          : "email";
         claimedChannel = initialChannel;
         const communicationId = await claimReminderCommunication({
           practiceId: appt.practiceId,
@@ -457,7 +465,39 @@ export async function GET(request: Request) {
         }
         claimedCommunicationId = communicationId;
 
-        if (channel === "sms") {
+        if (channel === "whatsapp") {
+          const result = await sendAppointmentReminderWA({
+            to: appt.clientPhone!,
+            patientName: appt.patientName ?? "Unknown",
+            appointmentDate,
+            appointmentTime,
+            practiceName: appt.practiceName ?? "",
+            practicePhone: appt.practicePhone ?? undefined,
+          });
+          if (result.success) {
+            await recordReminderOutcome({
+              practiceId: appt.practiceId,
+              communicationId,
+              channel: "whatsapp",
+              content: `Automated WhatsApp appointment reminder sent for ${appt.patientName} on ${appt.startTime.toISOString()}`,
+              status: "sent",
+              providerMessageId: result.messageId,
+            });
+            sent++;
+          } else if (await emailReminder(communicationId)) {
+            // WhatsApp failed — fall back to email.
+            sent++;
+          } else {
+            await recordReminderOutcome({
+              practiceId: appt.practiceId,
+              communicationId,
+              channel: "whatsapp",
+              content: `Automated WhatsApp appointment reminder failed for ${appt.patientName} on ${appt.startTime.toISOString()}: ${result.error ?? "unknown error"}`,
+              status: "failed",
+            });
+            failed++;
+          }
+        } else if (channel === "sms") {
           const senderLocationId = await activeSenderLocation(
             appt.practiceId,
             appt.locationId ?? undefined

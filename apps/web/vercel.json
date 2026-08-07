@@ -27,6 +27,10 @@
       "schedule": "0 5 * * *"
     },
     {
+      "path": "/api/cron/wellness-reminders",
+      "schedule": "0 9 * * *"
+    },
+    {
       "path": "/api/cron/rate-limit-cleanup",
       "schedule": "30 4 * * *"
     },

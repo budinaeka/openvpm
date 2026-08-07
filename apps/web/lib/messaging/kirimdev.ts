@@ -123,3 +123,54 @@ export async function sendWhatsAppMessage(
 export function isKirimdevConfigured(): boolean {
   return Boolean(kirimdevApiKey() && kirimdevPhoneNumberId());
 }
+
+// ── Automated reminder helpers ─────────────────────────────────────────
+
+/** Send a WhatsApp appointment reminder. */
+export async function sendAppointmentReminderWA(data: {
+  to: string;
+  patientName: string;
+  appointmentDate: string;
+  appointmentTime: string;
+  practiceName: string;
+  practicePhone?: string;
+}): Promise<KirimdevSendResult> {
+  const phoneInfo = data.practicePhone
+    ? `Hubungi ${data.practicePhone} untuk reschedule.`
+    : "Hubungi kami untuk reschedule.";
+
+  const text = `Halo! Pengingat: ${data.patientName} ada janji pada ${data.appointmentDate} jam ${data.appointmentTime}. ${phoneInfo} — ${data.practiceName}`;
+  return sendWhatsAppMessage(data.to, text);
+}
+
+/** Send a WhatsApp vaccination reminder. */
+export async function sendVaccinationReminderWA(data: {
+  to: string;
+  patientName: string;
+  vaccineName: string;
+  practiceName: string;
+  practicePhone?: string;
+}): Promise<KirimdevSendResult> {
+  const phoneInfo = data.practicePhone
+    ? `Hubungi ${data.practicePhone} untuk jadwalkan.`
+    : "Hubungi kami untuk jadwalkan.";
+
+  const text = `Halo! ${data.patientName} sudah waktunya vaksin ${data.vaccineName}. ${phoneInfo} — ${data.practiceName}`;
+  return sendWhatsAppMessage(data.to, text);
+}
+
+/** Send a WhatsApp wellness plan billing reminder. */
+export async function sendWellnessReminderWA(data: {
+  to: string;
+  patientName: string;
+  planName: string;
+  practiceName: string;
+  practicePhone?: string;
+}): Promise<KirimdevSendResult> {
+  const phoneInfo = data.practicePhone
+    ? `Hubungi ${data.practicePhone} untuk info.`
+    : "Hubungi kami untuk info.";
+
+  const text = `Halo! Pengingat billing wellness plan ${data.planName} untuk ${data.patientName} sudah jatuh tempo. ${phoneInfo} — ${data.practiceName}`;
+  return sendWhatsAppMessage(data.to, text);
+}

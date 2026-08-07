@@ -35,6 +35,10 @@ import {
   sendVaccinationReminderSms,
 } from "@/lib/sms";
 import { pickReminderChannel } from "@/lib/messaging/reminders";
+import {
+  isKirimdevConfigured,
+  sendVaccinationReminderWA,
+} from "@/lib/messaging/kirimdev";
 import { formatCurrency } from "@/lib/locale/format";
 import { formatDateInputForTimeZone } from "@/lib/date-input";
 import { formatClinicalDate } from "@/lib/records/clinical-dates";
@@ -942,7 +946,7 @@ export const notificationsRouter = createRouter({
       for (const [, data] of grouped) {
         const vaccineNames = data.vaccines.map((v) => v.vaccineName).join(", ");
         const logReminder = (
-          channel: "sms" | "email",
+          channel: "whatsapp" | "sms" | "email",
           providerMessageId?: string,
           vaccineLabel = vaccineNames
         ) =>
@@ -992,7 +996,30 @@ export const notificationsRouter = createRouter({
           smsConsent: data.smsConsent ?? false,
           hasEmail: Boolean(normalizeEmailSuppressionAddress(data.clientEmail)),
           quietHours: false,
+          hasWhatsApp: isKirimdevConfigured(),
         });
+
+        if (channel === "whatsapp") {
+          const result = await sendVaccinationReminderWA({
+            to: data.clientPhone!,
+            patientName: data.patientName,
+            vaccineName: vaccineNames,
+            practiceName: practice.name,
+            practicePhone: practice.phone ?? undefined,
+          });
+          if (result.success) {
+            await logReminder("whatsapp", result.messageId);
+            sent++;
+            continue;
+          }
+          // WhatsApp failed — fall back to email
+          if (await sendEmail()) {
+            sent++;
+            continue;
+          }
+          failed++;
+          continue;
+        }
 
         if (channel === "sms") {
           const smsSender = await getSmsSender();

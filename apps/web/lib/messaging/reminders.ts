@@ -3,7 +3,10 @@
  * Pure functions so the cron sweep and the manual notifications router apply
  * identical rules (consent, preference, suppression-by-send, quiet hours).
  */
+
 import { normalizeE164 } from "./phone";
+
+export type ReminderChannel = "whatsapp" | "sms" | "email" | "skip" | "none";
 
 // TCPA quiet hours: no non-urgent texts before 8am or at/after 9pm local.
 const QUIET_END_HOUR = 8; // 8am — sending allowed from here
@@ -35,15 +38,14 @@ export function isQuietHours(
   return hour < QUIET_END_HOUR || hour >= QUIET_START_HOUR;
 }
 
-export type ReminderChannel = "sms" | "email" | "skip" | "none";
-
 /**
  * Choose the channel for one reminder:
+ * - "whatsapp" — WhatsApp configured + client has phone; no quiet-hours gate
+ *   (WA is async, not as intrusive as SMS)
  * - "sms"   — client prefers SMS, has a phone + consent, and it's not quiet hours
- * - "email" — fall back to email whenever SMS isn't chosen and an email exists
+ * - "email" — fall back to email whenever preferable channels aren't available
  * - "skip"  — SMS-preferred but quiet hours and no email → defer to a later run
  * - "none"  — no usable channel
- * (The suppression list is enforced separately as a hard gate inside sendSms.)
  */
 export function pickReminderChannel(opts: {
   preferredContactMethod: string | null | undefined;
@@ -51,10 +53,16 @@ export function pickReminderChannel(opts: {
   smsConsent: boolean;
   hasEmail: boolean;
   quietHours: boolean;
+  hasWhatsApp?: boolean;
 }): ReminderChannel {
+  const hasPhone = normalizeE164(opts.phone) !== null;
+
+  // WhatsApp — best channel when available (no quiet-hours gate, async)
+  if (opts.hasWhatsApp && hasPhone) return "whatsapp";
+
   const smsEligible =
     opts.preferredContactMethod === "sms" &&
-    normalizeE164(opts.phone) !== null &&
+    hasPhone &&
     opts.smsConsent;
   if (smsEligible && !opts.quietHours) return "sms";
   if (opts.hasEmail) return "email";
