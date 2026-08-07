@@ -63,7 +63,7 @@ export async function sendWhatsAppMessage(
   // Strip any leading "+" — Kirimdev expects digits-only E.164
   const normalizedTo = to.replace(/^\+/, "");
 
-  const url = `${kirimdevBaseUrl()}/messages`;
+  const url = `${kirimdevBaseUrl()}/${phoneNumberId}/messages`;
   const payload = {
     phone_number_id: phoneNumberId,
     to: normalizedTo,
