@@ -77,6 +77,9 @@ export default function NewSoapNotePage() {
   );
   const [replaceTemplateContent, setReplaceTemplateContent] = useState(false);
   const canSave = hasSoapContent({ subjective, objective, assessment, plan });
+  const canRecommendAssessmentPlan = Boolean(
+    normalizeSoapSection(subjective) && normalizeSoapSection(objective)
+  );
   const selectedTemplate = getSoapTemplateById(selectedTemplateId);
 
   const {
@@ -117,13 +120,18 @@ export default function NewSoapNotePage() {
 
   function handleDraftWithAi() {
     if (!params.patientId || draftWithAi.isPending) return;
-    if (
-      canSave &&
-      !window.confirm("Replace what you typed with the AI draft?")
-    ) {
-      return;
+    const hasSubjectiveAndObjective =
+      normalizeSoapSection(subjective) && normalizeSoapSection(objective);
+
+    if (!hasSubjectiveAndObjective && canSave) {
+      if (!window.confirm("Replace what you typed with the AI draft?")) return;
     }
-    draftWithAi.mutate({ patientId: params.patientId });
+
+    draftWithAi.mutate({
+      patientId: params.patientId,
+      subjective,
+      objective,
+    });
   }
 
   function handleSave() {
@@ -256,7 +264,11 @@ export default function NewSoapNotePage() {
               ) : (
                 <Sparkles className="mr-2 h-4 w-4" />
               )}
-              {draftWithAi.isPending ? "Drafting..." : "Draft with AI"}
+              {draftWithAi.isPending
+                ? "Drafting..."
+                : canRecommendAssessmentPlan
+                  ? "Recommend A/P with AI"
+                  : "Draft with AI"}
             </Button>
           </div>
           {!aiConfigured && !agentStatus.isLoading && (

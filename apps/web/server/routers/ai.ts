@@ -36,6 +36,7 @@ import {
   hasSoapContent,
   normalizeSoapSection,
   SOAP_SECTION_MAX_LENGTH,
+  soapSectionText,
 } from "@/lib/records/soap-content";
 import { optionalClinicalTextInput } from "@/lib/records/clinical-inputs";
 import { AI_SOURCE_MAX_LENGTH } from "@/lib/ai/soap";
@@ -237,6 +238,8 @@ export const aiRouter = createRouter({
           "Visit context",
           SOAP_DRAFT_VISIT_CONTEXT_MAX_LENGTH
         ),
+        subjective: z.string().max(SOAP_SECTION_MAX_LENGTH).optional(),
+        objective: z.string().max(SOAP_SECTION_MAX_LENGTH).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -334,12 +337,18 @@ export const aiRouter = createRouter({
       }
 
       try {
+        const currentSubjective = soapSectionText(input.subjective);
+        const currentObjective = soapSectionText(input.objective);
+        const assessmentPlanMode = Boolean(currentSubjective && currentObjective);
         const draft = await draftSoapNote({
           patient,
           allergies,
           activeProblems: problems,
           latestVitals: latestVitals ?? null,
           visitContext: input.visitContext,
+          currentSubjective: currentSubjective || undefined,
+          currentObjective: currentObjective || undefined,
+          mode: assessmentPlanMode ? "assessment_plan" : "full",
         });
         // Meter successful drafts like agent runs (no-op on self-host).
         await recordUsage({ practiceId: ctx.practiceId, kind: "ai_run" });
