@@ -28,12 +28,14 @@ import {
   COMMUNICATION_CONTENT_MAX_LENGTH,
   COMMUNICATION_SUBJECT_MAX_LENGTH,
   SMS_COMMUNICATION_CONTENT_MAX_LENGTH,
+  WHATSAPP_COMMUNICATION_CONTENT_MAX_LENGTH,
 } from "@/lib/communications/policy";
 
 export {
   COMMUNICATION_CONTENT_MAX_LENGTH,
   COMMUNICATION_SUBJECT_MAX_LENGTH,
   SMS_COMMUNICATION_CONTENT_MAX_LENGTH,
+  WHATSAPP_COMMUNICATION_CONTENT_MAX_LENGTH,
 } from "@/lib/communications/policy";
 
 const inboxStaffProcedure = protectedProcedure.use(
@@ -204,6 +206,16 @@ const createCommunicationInput = z
         code: z.ZodIssueCode.custom,
         path: ["content"],
         message: `SMS messages must be at most ${SMS_COMMUNICATION_CONTENT_MAX_LENGTH} characters.`,
+      });
+    }
+    if (
+      input.channel === "whatsapp" &&
+      input.content.length > WHATSAPP_COMMUNICATION_CONTENT_MAX_LENGTH
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["content"],
+        message: `WhatsApp messages must be at most ${WHATSAPP_COMMUNICATION_CONTENT_MAX_LENGTH} characters.`,
       });
     }
   });

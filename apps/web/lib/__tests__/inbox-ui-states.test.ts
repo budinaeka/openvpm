@@ -4,6 +4,7 @@ import {
   COMMUNICATION_CONTENT_MAX_LENGTH,
   COMMUNICATION_SUBJECT_MAX_LENGTH,
   SMS_COMMUNICATION_CONTENT_MAX_LENGTH,
+  WHATSAPP_COMMUNICATION_CONTENT_MAX_LENGTH,
   communicationContentMaxLength,
   isCommunicationContentValid,
   isCommunicationSubjectValid,
@@ -192,6 +193,7 @@ describe("inbox UI states", () => {
     expect(COMMUNICATION_SUBJECT_MAX_LENGTH).toBe(255);
     expect(COMMUNICATION_CONTENT_MAX_LENGTH).toBe(5000);
     expect(SMS_COMMUNICATION_CONTENT_MAX_LENGTH).toBe(1600);
+    expect(WHATSAPP_COMMUNICATION_CONTENT_MAX_LENGTH).toBe(4096);
     expect(communicationContentMaxLength("email")).toBe(
       COMMUNICATION_CONTENT_MAX_LENGTH
     );
@@ -201,12 +203,19 @@ describe("inbox UI states", () => {
     expect(communicationContentMaxLength("sms")).toBe(
       SMS_COMMUNICATION_CONTENT_MAX_LENGTH
     );
+    expect(communicationContentMaxLength("whatsapp")).toBe(
+      WHATSAPP_COMMUNICATION_CONTENT_MAX_LENGTH
+    );
     expect(isCommunicationSubjectValid("A".repeat(255))).toBe(true);
     expect(isCommunicationSubjectValid("A".repeat(256))).toBe(false);
     expect(isCommunicationContentValid("Hello", "email")).toBe(true);
     expect(isCommunicationContentValid("Hello", "portal")).toBe(true);
+    expect(isCommunicationContentValid("Hello", "whatsapp")).toBe(true);
     expect(isCommunicationContentValid(" ".repeat(8), "email")).toBe(false);
     expect(isCommunicationContentValid("A".repeat(1601), "sms")).toBe(false);
+    expect(isCommunicationContentValid("A".repeat(4097), "whatsapp")).toBe(
+      false
+    );
 
     expect(routerSource).toContain('from "@/lib/communications/policy"');
     expect(routerSource).toContain(
@@ -214,6 +223,9 @@ describe("inbox UI states", () => {
     );
     expect(routerSource).toContain("COMMUNICATION_CONTENT_MAX_LENGTH");
     expect(routerSource).toContain("SMS_COMMUNICATION_CONTENT_MAX_LENGTH");
+    expect(routerSource).toContain(
+      "WHATSAPP_COMMUNICATION_CONTENT_MAX_LENGTH"
+    );
 
     expect(source).toContain('from "@/lib/communications/policy"');
     expect(source).toContain(
@@ -224,6 +236,7 @@ describe("inbox UI states", () => {
     );
     expect(source).toContain('<option value="portal">Portal</option>');
     expect(source).toContain("composeChannel === \"portal\"");
+    expect(source).toContain("composeChannel === \"whatsapp\"");
     expect(source).toContain(
       "isCommunicationContentValid(composeContent, composeDeliveryChannel)"
     );

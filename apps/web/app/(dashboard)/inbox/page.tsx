@@ -330,6 +330,8 @@ export default function InboxPage() {
   const composeDeliveryChannel =
     composeChannel === "sms"
       ? "sms"
+      : composeChannel === "whatsapp"
+        ? "whatsapp"
       : composeChannel === "portal"
         ? "portal"
         : "email";

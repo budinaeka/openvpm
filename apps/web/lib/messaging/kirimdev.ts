@@ -91,6 +91,7 @@ export async function sendWhatsAppMessage(
     }
 
     const json = (await res.json()) as {
+      data?: { id?: string };
       message_id?: string;
       messages?: Array<{ id: string }>;
       id?: string;
@@ -105,6 +106,7 @@ export async function sendWhatsAppMessage(
     }
 
     const messageId =
+      json.data?.id ??
       json.message_id ??
       json.messages?.[0]?.id ??
       json.id ??
