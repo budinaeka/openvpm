@@ -1,3 +1,4 @@
+import { execFile } from "node:child_process";
 import fs from "fs";
 import path from "path";
 
@@ -83,10 +84,11 @@ export function loadSkill(name: string): {
 }
 
 // ---------------------------------------------------------------------------
-// openFDA client (Node.js native fetch — no SDK needed)
+// openFDA client (Node.js native fetch + curl fallback)
 // ---------------------------------------------------------------------------
 
 const OPENFDA_BASE = "https://api.fda.gov/animalandveterinary/event.json";
+const OPENFDA_TIMEOUT_MS = 15_000;
 
 function openFdaApiKey(): string | undefined {
   const key = process.env.OPENFDA_API_KEY ?? process.env.OPEN_VPM_OPENFDA_KEY;
@@ -110,6 +112,76 @@ function buildOpenFdaQuery(params: OpenFdaSearchParams): string | undefined {
   return parts.length > 0 ? parts.join("+AND+") : undefined;
 }
 
+async function fetchOpenFdaJson(url: string): Promise<Record<string, unknown>> {
+  try {
+    const res = await fetch(url, {
+      headers: { Accept: "application/json" },
+      signal: AbortSignal.timeout(OPENFDA_TIMEOUT_MS),
+    });
+
+    if (res.status === 404) {
+      return { meta: { results: { total: 0 } }, results: [] };
+    }
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      return { error: `openFDA returned HTTP ${res.status}: ${text.slice(0, 300)}`, results: [] };
+    }
+    return (await res.json()) as Record<string, unknown>;
+  } catch (error) {
+    return fetchOpenFdaJsonWithCurl(url, error);
+  }
+}
+
+async function fetchOpenFdaJsonWithCurl(
+  url: string,
+  originalError: unknown
+): Promise<Record<string, unknown>> {
+  return new Promise((resolve) => {
+    execFile(
+      "curl",
+      [
+        "--silent",
+        "--show-error",
+        "--fail-with-body",
+        "--ipv4",
+        "--connect-timeout",
+        "10",
+        "--max-time",
+        String(Math.ceil(OPENFDA_TIMEOUT_MS / 1000)),
+        "--header",
+        "Accept: application/json",
+        url,
+      ],
+      { timeout: OPENFDA_TIMEOUT_MS + 2_000, maxBuffer: 10 * 1024 * 1024 },
+      (curlError, stdout, stderr) => {
+        if (curlError) {
+          const originalMessage =
+            originalError instanceof Error ? originalError.message : "unknown error";
+          const curlMessage = String(stderr || curlError.message || "curl failed")
+            .trim()
+            .slice(0, 300);
+          resolve({
+            error: `openFDA request failed: ${originalMessage}; curl fallback failed: ${curlMessage}`,
+            results: [],
+          });
+          return;
+        }
+
+        try {
+          resolve(JSON.parse(stdout) as Record<string, unknown>);
+        } catch (parseError) {
+          resolve({
+            error: `openFDA request failed: curl fallback returned invalid JSON: ${
+              parseError instanceof Error ? parseError.message : "unknown parse error"
+            }`,
+            results: [],
+          });
+        }
+      }
+    );
+  });
+}
+
 export async function searchAdverseEvents(
   params: OpenFdaSearchParams
 ): Promise<Record<string, unknown>> {
@@ -122,26 +194,7 @@ export async function searchAdverseEvents(
   if (apiKey) urlParams.set("api_key", apiKey);
 
   const url = `${OPENFDA_BASE}?${urlParams.toString()}`;
-  try {
-    const res = await fetch(url, {
-      headers: { Accept: "application/json" },
-      signal: AbortSignal.timeout(15_000),
-    });
-
-    if (res.status === 404) {
-      return { meta: { results: { total: 0 } }, results: [] };
-    }
-    if (!res.ok) {
-      const text = await res.text().catch(() => "");
-      return { error: `openFDA returned HTTP ${res.status}: ${text.slice(0, 300)}`, results: [] };
-    }
-    return (await res.json()) as Record<string, unknown>;
-  } catch (error) {
-    return {
-      error: `openFDA request failed: ${error instanceof Error ? error.message : "unknown error"}`,
-      results: [],
-    };
-  }
+  return fetchOpenFdaJson(url);
 }
 
 export async function topReactions(
@@ -162,24 +215,7 @@ export async function topReactions(
   if (apiKey) urlParams.set("api_key", apiKey);
 
   const url = `${OPENFDA_BASE}?${urlParams.toString()}`;
-  try {
-    const res = await fetch(url, {
-      headers: { Accept: "application/json" },
-      signal: AbortSignal.timeout(15_000),
-    });
-
-    if (res.status === 404) {
-      return { results: [] };
-    }
-    if (!res.ok) {
-      const text = await res.text().catch(() => "");
-      return { error: `openFDA returned HTTP ${res.status}: ${text.slice(0, 300)}`, results: [] };
-    }
-    return (await res.json()) as Record<string, unknown>;
-  } catch (error) {
-    return {
-      error: `openFDA request failed: ${error instanceof Error ? error.message : "unknown error"}`,
-      results: [],
-    };
-  }
+  const json = await fetchOpenFdaJson(url);
+  if (json.error || Array.isArray(json.results)) return json;
+  return { results: [] };
 }

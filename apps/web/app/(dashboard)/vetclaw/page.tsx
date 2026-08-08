@@ -429,7 +429,15 @@ function OpenFdaSection() {
     setResults(null);
     const res = await topReactionsQuery.refetch();
     if (res.data) {
-      setResults(res.data as { reactions?: Array<{ term: string; count: number }>; error?: string });
+      const data = res.data as {
+        reactions?: Array<{ term: string; count: number }>;
+        results?: Array<{ term: string; count: number }>;
+        error?: string;
+      };
+      setResults({
+        reactions: data.reactions ?? data.results,
+        error: data.error,
+      });
     }
   };
 
