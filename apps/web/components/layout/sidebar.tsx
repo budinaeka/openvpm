@@ -22,6 +22,7 @@ import {
   Bot,
   Stethoscope,
   Bell,
+  Rocket,
   ChevronLeft,
   ChevronRight,
   LogOut,
@@ -49,6 +50,7 @@ const navItems: {
   roles: UserRole[];
 }[] = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard, roles: allRoles },
+  { href: "/vetflowid", label: "VetFlowID", icon: Rocket, roles: ["admin"] },
   { href: "/patients", label: "Patients", icon: PawPrint, roles: allRoles },
   { href: "/clients", label: "Clients", icon: Users, roles: allRoles },
   { href: "/schedule", label: "Schedule", icon: Calendar, roles: allRoles },
