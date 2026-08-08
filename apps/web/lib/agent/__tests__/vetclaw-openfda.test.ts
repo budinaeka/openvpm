@@ -69,4 +69,21 @@ describe("VetClaw openFDA client", () => {
     expect(file).toBe("curl");
     expect(args).toContain("--ipv4");
   });
+
+  it("treats openFDA NOT_FOUND JSON as an empty result set", async () => {
+    mocks.fetch.mockRejectedValueOnce(new TypeError("fetch failed"));
+    mocks.execFile.mockImplementationOnce((_file, _args, _options, callback) => {
+      callback(
+        null,
+        JSON.stringify({
+          error: { code: "NOT_FOUND", message: "No matches found!" },
+        }),
+        ""
+      );
+    });
+
+    await expect(topReactions("DOG", "UnknownDrug")).resolves.toEqual({
+      results: [],
+    });
+  });
 });

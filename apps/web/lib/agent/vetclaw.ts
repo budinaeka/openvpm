@@ -105,11 +105,22 @@ interface OpenFdaSearchParams {
 
 function buildOpenFdaQuery(params: OpenFdaSearchParams): string | undefined {
   const parts: string[] = [];
-  if (params.species) parts.push(`animal.species:"${params.species.toUpperCase()}"`);
+  if (params.species) parts.push(`animal.species:"${openFdaSpecies(params.species)}"`);
   if (params.breed) parts.push(`animal.breed.breed_component:"${params.breed}"`);
   if (params.drug) parts.push(`drug.name:"${params.drug.toUpperCase()}"`);
   if (params.reaction) parts.push(`reaction.veddra_term_name:"${params.reaction}"`);
   return parts.length > 0 ? parts.join("+AND+") : undefined;
+}
+
+function openFdaSpecies(species: string): string {
+  const trimmed = species.trim().toLowerCase();
+  return trimmed ? trimmed.charAt(0).toUpperCase() + trimmed.slice(1) : species;
+}
+
+function normalizeOpenFdaJson(json: Record<string, unknown>): Record<string, unknown> {
+  const error = json.error as { code?: string; message?: string } | undefined;
+  if (error?.code === "NOT_FOUND") return { results: [] };
+  return json;
 }
 
 async function fetchOpenFdaJson(url: string): Promise<Record<string, unknown>> {
@@ -126,7 +137,7 @@ async function fetchOpenFdaJson(url: string): Promise<Record<string, unknown>> {
       const text = await res.text().catch(() => "");
       return { error: `openFDA returned HTTP ${res.status}: ${text.slice(0, 300)}`, results: [] };
     }
-    return (await res.json()) as Record<string, unknown>;
+    return normalizeOpenFdaJson((await res.json()) as Record<string, unknown>);
   } catch (error) {
     return fetchOpenFdaJsonWithCurl(url, error);
   }
@@ -142,7 +153,6 @@ async function fetchOpenFdaJsonWithCurl(
       [
         "--silent",
         "--show-error",
-        "--fail-with-body",
         "--ipv4",
         "--connect-timeout",
         "10",
@@ -168,7 +178,7 @@ async function fetchOpenFdaJsonWithCurl(
         }
 
         try {
-          resolve(JSON.parse(stdout) as Record<string, unknown>);
+          resolve(normalizeOpenFdaJson(JSON.parse(stdout) as Record<string, unknown>));
         } catch (parseError) {
           resolve({
             error: `openFDA request failed: curl fallback returned invalid JSON: ${
@@ -202,7 +212,7 @@ export async function topReactions(
   drug?: string
 ): Promise<Record<string, unknown>> {
   const queryParts: string[] = [
-    `animal.species:"${species.toUpperCase()}"`,
+    `animal.species:"${openFdaSpecies(species)}"`,
   ];
   if (drug) queryParts.push(`drug.name:"${drug.toUpperCase()}"`);
   const query = queryParts.join("+AND+");
