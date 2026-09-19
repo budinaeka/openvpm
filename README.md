@@ -125,10 +125,10 @@ Structured data models queryable by AI agents. Signed webhook events for agent s
 | **Events** | Signed webhook delivery for integrations |
 | **Email/SMS** | Resend + Telnyx SMS (Twilio fallback) |
 | **Payments** | Stripe |
-| **File Storage** | S3-compatible (MinIO for self-hosted) |
+| **File Storage** | Local filesystem by default; optional S3-compatible storage (MinIO, S3, R2) |
 | **Monorepo** | Turborepo + pnpm workspaces |
 | **Testing** | Vitest + Playwright |
-| **Deployment** | Docker Compose (self-host) or Vercel (cloud) |
+| **Deployment** | Bare-metal Ubuntu/systemd, Docker Compose, or Vercel (cloud) |
 
 ## Architecture
 
@@ -150,7 +150,7 @@ openvpm/
 │   ├── api/                    # Shared Zod validators
 │   ├── config/                 # TypeScript, Tailwind config
 │   └── email/                  # Email templates
-├── docker/                     # Docker Compose (PostgreSQL + MinIO)
+├── docker/                     # Docker Compose (PostgreSQL + app; MinIO optional profile)
 └── e2e/                        # Playwright E2E tests
 ```
 
@@ -184,30 +184,28 @@ Dashboard procedures include Zod validation and role-based access control throug
 
 - Node.js 20+
 - pnpm 9+
-- Docker (for PostgreSQL and MinIO)
+- PostgreSQL 16+ (or Docker if you want Compose to run PostgreSQL)
 
 ### Setup
 
 ```bash
 # Clone the repository
-git clone https://github.com/evangauer/openvpm.git
+git clone https://github.com/budinaeka/openvpm.git
 cd openvpm
 
 # Copy environment config
 cp .env.example .env
 
-# Start PostgreSQL and MinIO
-docker compose -f docker/docker-compose.yml up -d
+# Option A: start PostgreSQL with Docker Compose (app still runs on your host)
+docker compose -f docker/docker-compose.yml up -d postgres
 
 # Install dependencies
-pnpm install
+corepack enable
+corepack prepare pnpm@9.15.0 --activate
+pnpm install --frozen-lockfile
 
 # Apply database schema
 pnpm db:push
-
-# Apply and verify row-level security policies
-pnpm db:rls
-pnpm db:rls:test
 
 # Seed with realistic demo data
 pnpm db:seed
@@ -227,15 +225,33 @@ Open [http://localhost:3000](http://localhost:3000) and sign in with the demo cr
 
 The seed data creates a complete demo practice — "Neighborhood Veterinary" — with 8 staff, 25 clients, 40 patients, 2 weeks of appointments, SOAP notes, vaccination records, invoices, and 50 inventory products.
 
-The Docker Compose stack includes a one-shot MinIO bootstrap container that creates the `openpims` bucket used by `S3_BUCKET`. When using an external S3-compatible store, create that bucket yourself and grant the app credentials read/write/delete/head access before uploads, backups, or file previews run.
+By default, uploads use local filesystem storage (`STORAGE_DRIVER=local`) and no
+MinIO service is required. See [docs/storage.md](docs/storage.md) for local and
+S3-compatible storage options.
+
+### Deploy without Docker
+
+For a lightweight Ubuntu VPS deployment with native PostgreSQL, local storage,
+systemd, and a reverse proxy, see [docs/deployment-bare-metal.md](docs/deployment-bare-metal.md):
+
+```bash
+sudo bash scripts/setup-prod-ubuntu.sh \
+  --domain openvpm.example.com \
+  --install-dir /opt/openvpm
+```
 
 ### Deploy with Docker
 
 ```bash
-docker compose -f docker/docker-compose.yml up -d
+docker compose -f docker/docker-compose.yml up -d --build
 ```
 
-The Docker setup includes PostgreSQL 16 with health checks, MinIO for S3-compatible file storage, automatic MinIO bucket bootstrap, and a multi-stage production build of the web application. For production, run `pnpm db:migrate`, then `OPENPIMS_APP_DB_PASSWORD='<strong>' pnpm db:rls`, verify with `OPENPIMS_APP_DB_PASSWORD='<same>' pnpm db:rls:test`, and point the app at the generated least-privilege `openpims_app` database role before serving traffic.
+The Docker setup includes PostgreSQL 16 and a multi-stage production build of the
+web application. It uses local file storage by default via a persistent Docker
+volume. MinIO/S3-compatible storage is available as an optional Compose profile;
+see [docs/deployment-docker.md](docs/deployment-docker.md). For production, run
+`pnpm db:migrate` (or `pnpm db:push` for simple self-host installs), then use a
+real `NEXTAUTH_SECRET`, database password, HTTPS reverse proxy, and backups.
 
 ## API
 
