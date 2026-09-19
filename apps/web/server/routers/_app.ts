@@ -30,6 +30,7 @@ import { waitlistRouter } from "./waitlist";
 import { subscriptionRouter } from "./subscription";
 import { adminRouter } from "./admin";
 import { messagingRouter } from "./messaging";
+import { careRemindersRouter } from "./care-reminders";
 
 export const appRouter = createRouter({
   auth: authRouter,
@@ -63,6 +64,7 @@ export const appRouter = createRouter({
   subscription: subscriptionRouter,
   admin: adminRouter,
   messaging: messagingRouter,
+  careReminders: careRemindersRouter,
 });
 
 export type AppRouter = typeof appRouter;

@@ -1,14 +1,5 @@
 import { z } from "zod";
-import {
-  eq,
-  and,
-  isNull,
-  gte,
-  lte,
-  lt,
-  inArray,
-  sql,
-} from "drizzle-orm";
+import { eq, and, isNull, gte, lte, lt, inArray, sql } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { createRouter, protectedProcedure, requireRole } from "../trpc";
 import type { Database } from "@openpims/db/client";
@@ -47,6 +38,10 @@ import {
   normalizeEmailSuppressionAddress,
 } from "@/lib/email-suppression";
 import { hasNonBlankMessagingSender } from "@/lib/messaging/sender-query";
+import {
+  getVaccinationRecallPreview,
+  sendVaccinationRecallReminders,
+} from "../vaccination-recalls";
 
 const DEFAULT_PRACTICE_NAME = "your clinic";
 
@@ -176,8 +171,8 @@ async function activeReminderSmsSender(ctx: {
         eq(locations.id, locationMessaging.locationId),
         eq(locations.practiceId, ctx.practiceId),
         activePracticePredicate(ctx.practiceId),
-        isNull(locations.deletedAt)
-      )
+        isNull(locations.deletedAt),
+      ),
     )
     .where(
       and(
@@ -189,8 +184,8 @@ async function activeReminderSmsSender(ctx: {
         isNull(locations.deletedAt),
         eq(locationMessaging.enabled, true),
         eq(locationMessaging.registrationStatus, "active"),
-        hasNonBlankMessagingSender()
-      )
+        hasNonBlankMessagingSender(),
+      ),
     )
     .limit(1);
   return smsSender ?? null;
@@ -227,8 +222,8 @@ export const notificationsRouter = createRouter({
             eq(patients.clientId, appointments.clientId),
             eq(patients.practiceId, ctx.practiceId),
             activePracticePredicate(ctx.practiceId),
-            isNull(patients.deletedAt)
-          )
+            isNull(patients.deletedAt),
+          ),
         )
         .leftJoin(
           clients,
@@ -236,24 +231,24 @@ export const notificationsRouter = createRouter({
             eq(appointments.clientId, clients.id),
             eq(clients.practiceId, ctx.practiceId),
             activePracticePredicate(ctx.practiceId),
-            isNull(clients.deletedAt)
-          )
+            isNull(clients.deletedAt),
+          ),
         )
         .leftJoin(
           emailSuppressions,
           and(
             eq(emailSuppressions.practiceId, ctx.practiceId),
             sql`${emailSuppressions.email} = lower(trim(${clients.email}))`,
-            isNull(emailSuppressions.deletedAt)
-          )
+            isNull(emailSuppressions.deletedAt),
+          ),
         )
         .leftJoin(
           practices,
           and(
             eq(appointments.practiceId, practices.id),
             eq(practices.id, ctx.practiceId),
-            isNull(practices.deletedAt)
-          )
+            isNull(practices.deletedAt),
+          ),
         )
         .where(
           and(
@@ -264,20 +259,23 @@ export const notificationsRouter = createRouter({
             isNull(patients.deletedAt),
             eq(clients.practiceId, ctx.practiceId),
             isNull(clients.deletedAt),
-            isNull(appointments.deletedAt)
-          )
+            isNull(appointments.deletedAt),
+          ),
         )
         .limit(1);
 
       if (!appt) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Appointment not found" });
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Appointment not found",
+        });
       }
 
       // Manual send: respect the client's preferred channel + SMS consent.
       // Quiet hours don't apply — this is a deliberate staff action.
       const logReminder = (
         channel: "sms" | "email",
-        providerMessageId?: string
+        providerMessageId?: string,
       ) =>
         ctx.db.insert(communications).values({
           practiceId: ctx.practiceId,
@@ -287,7 +285,7 @@ export const notificationsRouter = createRouter({
           subject: "Appointment Reminder",
           content: `Appointment reminder sent for ${appt.patientName} on ${formatDate(
             appt.startTime,
-            appt.practiceTimezone
+            appt.practiceTimezone,
           )}`,
           status: "sent",
           providerMessageId,
@@ -305,7 +303,7 @@ export const notificationsRouter = createRouter({
           throw new TRPCError({
             code: "BAD_REQUEST",
             message: emailSuppressionSendBlockMessage(
-              appt.emailSuppressionReason
+              appt.emailSuppressionReason,
             ),
           });
         }
@@ -349,8 +347,14 @@ export const notificationsRouter = createRouter({
           ? await sendAppointmentReminderSms({
               to: appt.clientPhone!,
               patientName: appt.patientName ?? "Unknown",
-              appointmentDate: formatDate(appt.startTime, appt.practiceTimezone),
-              appointmentTime: formatTime(appt.startTime, appt.practiceTimezone),
+              appointmentDate: formatDate(
+                appt.startTime,
+                appt.practiceTimezone,
+              ),
+              appointmentTime: formatTime(
+                appt.startTime,
+                appt.practiceTimezone,
+              ),
               practiceName: practiceDisplayName(appt.practiceName),
               practicePhone: appt.practicePhone ?? undefined,
               practiceId: ctx.practiceId,
@@ -358,7 +362,8 @@ export const notificationsRouter = createRouter({
             })
           : {
               success: false,
-              error: "Set up an active texting number before sending SMS reminders",
+              error:
+                "Set up an active texting number before sending SMS reminders",
             };
         if (result.success) {
           await logReminder("sms", result.sid);
@@ -402,16 +407,16 @@ export const notificationsRouter = createRouter({
             eq(invoices.clientId, clients.id),
             eq(clients.practiceId, ctx.practiceId),
             activePracticePredicate(ctx.practiceId),
-            isNull(clients.deletedAt)
-          )
+            isNull(clients.deletedAt),
+          ),
         )
         .leftJoin(
           emailSuppressions,
           and(
             eq(emailSuppressions.practiceId, ctx.practiceId),
             sql`${emailSuppressions.email} = lower(trim(${clients.email}))`,
-            isNull(emailSuppressions.deletedAt)
-          )
+            isNull(emailSuppressions.deletedAt),
+          ),
         )
         .where(
           and(
@@ -420,23 +425,29 @@ export const notificationsRouter = createRouter({
             activePracticePredicate(ctx.practiceId),
             eq(clients.practiceId, ctx.practiceId),
             isNull(clients.deletedAt),
-            isNull(invoices.deletedAt)
-          )
+            isNull(invoices.deletedAt),
+          ),
         )
         .limit(1);
 
       if (!invoice) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Invoice not found" });
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Invoice not found",
+        });
       }
       const clientEmail = normalizeEmailSuppressionAddress(invoice.clientEmail);
       if (!clientEmail) {
-        throw new TRPCError({ code: "BAD_REQUEST", message: "Client does not have an email address on file" });
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Client does not have an email address on file",
+        });
       }
       if (invoice.emailSuppressionReason) {
         throw new TRPCError({
           code: "BAD_REQUEST",
           message: emailSuppressionSendBlockMessage(
-            invoice.emailSuppressionReason
+            invoice.emailSuppressionReason,
           ),
         });
       }
@@ -446,7 +457,7 @@ export const notificationsRouter = createRouter({
       const totalFormatted = formatCurrency(
         invoice.total ?? 0,
         practice.currency,
-        practice.country
+        practice.country,
       );
 
       const emailResult = await sendInvoiceEmail({
@@ -454,7 +465,11 @@ export const notificationsRouter = createRouter({
         clientName: `${invoice.clientFirstName} ${invoice.clientLastName}`,
         invoiceTotal: totalFormatted,
         dueDate: invoice.dueDate
-          ? formatClinicalDate(invoice.dueDate, practice.timezone, invoice.dueDate)
+          ? formatClinicalDate(
+              invoice.dueDate,
+              practice.timezone,
+              invoice.dueDate,
+            )
           : undefined,
         practiceName: practice.name,
         practicePhone: practice.phone ?? undefined,
@@ -505,8 +520,8 @@ export const notificationsRouter = createRouter({
           eq(patients.clientId, appointments.clientId),
           eq(patients.practiceId, ctx.practiceId),
           activePracticePredicate(ctx.practiceId),
-          isNull(patients.deletedAt)
-        )
+          isNull(patients.deletedAt),
+        ),
       )
       .leftJoin(
         clients,
@@ -514,8 +529,8 @@ export const notificationsRouter = createRouter({
           eq(appointments.clientId, clients.id),
           eq(clients.practiceId, ctx.practiceId),
           activePracticePredicate(ctx.practiceId),
-          isNull(clients.deletedAt)
-        )
+          isNull(clients.deletedAt),
+        ),
       )
       .leftJoin(
         users,
@@ -523,8 +538,8 @@ export const notificationsRouter = createRouter({
           eq(appointments.doctorId, users.id),
           eq(users.practiceId, ctx.practiceId),
           activePracticePredicate(ctx.practiceId),
-          isNull(users.deletedAt)
-        )
+          isNull(users.deletedAt),
+        ),
       )
       .where(
         and(
@@ -537,8 +552,8 @@ export const notificationsRouter = createRouter({
           isNull(appointments.deletedAt),
           gte(appointments.startTime, now),
           lte(appointments.startTime, in24h),
-          inArray(appointments.status, ["scheduled", "confirmed"])
-        )
+          inArray(appointments.status, ["scheduled", "confirmed"]),
+        ),
       )
       .orderBy(appointments.startTime);
   }),
@@ -551,9 +566,9 @@ export const notificationsRouter = createRouter({
           .array(z.string().uuid())
           .max(
             REMINDER_BATCH_MAX_TARGETS,
-            `Bulk reminders can target at most ${REMINDER_BATCH_MAX_TARGETS} appointments.`
+            `Bulk reminders can target at most ${REMINDER_BATCH_MAX_TARGETS} appointments.`,
           ),
-      })
+      }),
     )
     .mutation(async ({ ctx, input }) => {
       await assertActivePractice(ctx);
@@ -585,8 +600,8 @@ export const notificationsRouter = createRouter({
             eq(patients.clientId, appointments.clientId),
             eq(patients.practiceId, ctx.practiceId),
             activePracticePredicate(ctx.practiceId),
-            isNull(patients.deletedAt)
-          )
+            isNull(patients.deletedAt),
+          ),
         )
         .leftJoin(
           clients,
@@ -594,24 +609,24 @@ export const notificationsRouter = createRouter({
             eq(appointments.clientId, clients.id),
             eq(clients.practiceId, ctx.practiceId),
             activePracticePredicate(ctx.practiceId),
-            isNull(clients.deletedAt)
-          )
+            isNull(clients.deletedAt),
+          ),
         )
         .leftJoin(
           emailSuppressions,
           and(
             eq(emailSuppressions.practiceId, ctx.practiceId),
             sql`${emailSuppressions.email} = lower(trim(${clients.email}))`,
-            isNull(emailSuppressions.deletedAt)
-          )
+            isNull(emailSuppressions.deletedAt),
+          ),
         )
         .leftJoin(
           practices,
           and(
             eq(appointments.practiceId, practices.id),
             eq(practices.id, ctx.practiceId),
-            isNull(practices.deletedAt)
-          )
+            isNull(practices.deletedAt),
+          ),
         )
         .where(
           and(
@@ -622,13 +637,14 @@ export const notificationsRouter = createRouter({
             isNull(patients.deletedAt),
             eq(clients.practiceId, ctx.practiceId),
             isNull(clients.deletedAt),
-            isNull(appointments.deletedAt)
-          )
+            isNull(appointments.deletedAt),
+          ),
         );
 
       let sent = 0;
       let failed = appointmentIds.length - appts.length;
-      let smsSenderPromise: Promise<{ locationId: string } | null> | null = null;
+      let smsSenderPromise: Promise<{ locationId: string } | null> | null =
+        null;
       const getSmsSender = () => {
         smsSenderPromise ??= activeReminderSmsSender(ctx);
         return smsSenderPromise;
@@ -637,16 +653,16 @@ export const notificationsRouter = createRouter({
       for (const appt of appts) {
         const appointmentDate = formatDate(
           appt.startTime,
-          appt.practiceTimezone
+          appt.practiceTimezone,
         );
         const appointmentTime = formatTime(
           appt.startTime,
-          appt.practiceTimezone
+          appt.practiceTimezone,
         );
 
         const logReminder = (
           channel: "sms" | "email",
-          providerMessageId?: string
+          providerMessageId?: string,
         ) =>
           ctx.db.insert(communications).values({
             practiceId: ctx.practiceId,
@@ -660,7 +676,9 @@ export const notificationsRouter = createRouter({
           });
 
         const sendEmail = async (): Promise<boolean> => {
-          const clientEmail = normalizeEmailSuppressionAddress(appt.clientEmail);
+          const clientEmail = normalizeEmailSuppressionAddress(
+            appt.clientEmail,
+          );
           if (!clientEmail) return false;
           if (appt.emailSuppressionReason) return false;
           try {
@@ -748,7 +766,7 @@ export const notificationsRouter = createRouter({
       }
 
       return { sent, failed };
-  }),
+    }),
 
   getOverdueVaccinations: protectedProcedure.query(async ({ ctx }) => {
     await assertActivePractice(ctx);
@@ -772,8 +790,8 @@ export const notificationsRouter = createRouter({
           eq(vaccinationRecords.patientId, patients.id),
           eq(patients.practiceId, ctx.practiceId),
           activePracticePredicate(ctx.practiceId),
-          isNull(patients.deletedAt)
-        )
+          isNull(patients.deletedAt),
+        ),
       )
       .innerJoin(
         clients,
@@ -781,8 +799,8 @@ export const notificationsRouter = createRouter({
           eq(patients.clientId, clients.id),
           eq(clients.practiceId, ctx.practiceId),
           activePracticePredicate(ctx.practiceId),
-          isNull(clients.deletedAt)
-        )
+          isNull(clients.deletedAt),
+        ),
       )
       .where(
         and(
@@ -793,25 +811,31 @@ export const notificationsRouter = createRouter({
           isNull(patients.deletedAt),
           eq(clients.practiceId, ctx.practiceId),
           isNull(clients.deletedAt),
-          lt(vaccinationRecords.nextDueDate, today)
-        )
+          lt(vaccinationRecords.nextDueDate, today),
+        ),
       )
       .orderBy(patients.name);
 
-    const grouped = new Map<string, {
-      patientId: string;
-      patientName: string;
-      clientId: string;
-      clientFirstName: string;
-      clientLastName: string;
-      clientEmail: string | null;
-      overdueVaccines: { vaccineName: string; nextDueDate: string | null }[];
-    }>();
+    const grouped = new Map<
+      string,
+      {
+        patientId: string;
+        patientName: string;
+        clientId: string;
+        clientFirstName: string;
+        clientLastName: string;
+        clientEmail: string | null;
+        overdueVaccines: { vaccineName: string; nextDueDate: string | null }[];
+      }
+    >();
 
     for (const row of rows) {
       const existing = grouped.get(row.patientId);
       if (existing) {
-        existing.overdueVaccines.push({ vaccineName: row.vaccineName, nextDueDate: row.nextDueDate });
+        existing.overdueVaccines.push({
+          vaccineName: row.vaccineName,
+          nextDueDate: row.nextDueDate,
+        });
       } else {
         grouped.set(row.patientId, {
           patientId: row.patientId,
@@ -820,7 +844,9 @@ export const notificationsRouter = createRouter({
           clientFirstName: row.clientFirstName,
           clientLastName: row.clientLastName,
           clientEmail: row.clientEmail,
-          overdueVaccines: [{ vaccineName: row.vaccineName, nextDueDate: row.nextDueDate }],
+          overdueVaccines: [
+            { vaccineName: row.vaccineName, nextDueDate: row.nextDueDate },
+          ],
         });
       }
     }
@@ -828,257 +854,34 @@ export const notificationsRouter = createRouter({
     return Array.from(grouped.values());
   }),
 
+  getVaccinationRecallPreview: protectedProcedure
+    .use(requireRole("admin", "veterinarian", "front_desk"))
+    .query(async ({ ctx }) => {
+      await assertActivePractice(ctx);
+      const preview = await getVaccinationRecallPreview(ctx);
+      if (!preview) throw practiceNotFound();
+      return preview;
+    }),
+
   sendVaccinationReminders: protectedProcedure
-    .use(requireRole("admin"))
+    .use(requireRole("admin", "veterinarian", "front_desk"))
     .input(
       z.object({
         patientIds: z
           .array(z.string().uuid())
           .max(
             REMINDER_BATCH_MAX_TARGETS,
-            `Vaccination reminders can target at most ${REMINDER_BATCH_MAX_TARGETS} patients.`
+            `Vaccination reminders can target at most ${REMINDER_BATCH_MAX_TARGETS} patients.`,
           ),
-      })
+      }),
     )
     .mutation(async ({ ctx, input }) => {
       await assertActivePractice(ctx);
-      if (input.patientIds.length === 0) return { sent: 0, failed: 0 };
-      const patientIds = [...new Set(input.patientIds)];
-
-      const practice = await practiceNotificationSettings(ctx);
-      const today = formatDateInputForTimeZone(new Date(), practice.timezone);
-
-      const rows = await ctx.db
-        .select({
-          patientId: patients.id,
-          patientName: patients.name,
-          clientId: clients.id,
-          clientFirstName: clients.firstName,
-          clientLastName: clients.lastName,
-          clientEmail: clients.email,
-          clientPhone: clients.phone,
-          preferredContactMethod: clients.preferredContactMethod,
-          smsConsent: clients.smsConsent,
-          emailSuppressionReason: emailSuppressions.reason,
-          vaccineName: vaccinationRecords.vaccineName,
-          nextDueDate: vaccinationRecords.nextDueDate,
-        })
-        .from(vaccinationRecords)
-        .innerJoin(
-          patients,
-          and(
-            eq(vaccinationRecords.patientId, patients.id),
-            eq(patients.practiceId, ctx.practiceId),
-            activePracticePredicate(ctx.practiceId),
-            isNull(patients.deletedAt)
-          )
-        )
-        .innerJoin(
-          clients,
-          and(
-            eq(patients.clientId, clients.id),
-            eq(clients.practiceId, ctx.practiceId),
-            activePracticePredicate(ctx.practiceId),
-            isNull(clients.deletedAt)
-          )
-        )
-        .leftJoin(
-          emailSuppressions,
-          and(
-            eq(emailSuppressions.practiceId, ctx.practiceId),
-            sql`${emailSuppressions.email} = lower(trim(${clients.email}))`,
-            isNull(emailSuppressions.deletedAt)
-          )
-        )
-        .where(
-          and(
-            eq(vaccinationRecords.practiceId, ctx.practiceId),
-            activePracticePredicate(ctx.practiceId),
-            isNull(vaccinationRecords.deletedAt),
-            eq(patients.practiceId, ctx.practiceId),
-            isNull(patients.deletedAt),
-            eq(clients.practiceId, ctx.practiceId),
-            isNull(clients.deletedAt),
-            inArray(patients.id, patientIds),
-            lt(vaccinationRecords.nextDueDate, today)
-          )
-        );
-
-      const grouped = new Map<string, {
-        patientName: string;
-        clientId: string;
-        clientName: string;
-        clientEmail: string | null;
-        emailSuppressionReason: string | null;
-        clientPhone: string | null;
-        preferredContactMethod: string | null;
-        smsConsent: boolean | null;
-        vaccines: { vaccineName: string; nextDueDate: string | null }[];
-      }>();
-
-      for (const row of rows) {
-        const existing = grouped.get(row.patientId);
-        if (existing) {
-          existing.vaccines.push({ vaccineName: row.vaccineName, nextDueDate: row.nextDueDate });
-        } else {
-          grouped.set(row.patientId, {
-            patientName: row.patientName,
-            clientId: row.clientId,
-            clientName: `${row.clientFirstName} ${row.clientLastName}`,
-            clientEmail: row.clientEmail,
-            emailSuppressionReason: row.emailSuppressionReason,
-            clientPhone: row.clientPhone,
-            preferredContactMethod: row.preferredContactMethod,
-            smsConsent: row.smsConsent,
-            vaccines: [{ vaccineName: row.vaccineName, nextDueDate: row.nextDueDate }],
-          });
-        }
-      }
-
-      let sent = 0;
-      let failed = patientIds.length - grouped.size;
-      let smsSenderPromise: Promise<{ locationId: string } | null> | null = null;
-      const getSmsSender = () => {
-        smsSenderPromise ??= activeReminderSmsSender(ctx);
-        return smsSenderPromise;
-      };
-
-      for (const [, data] of grouped) {
-        const vaccineNames = data.vaccines.map((v) => v.vaccineName).join(", ");
-        const logReminder = (
-          channel: "whatsapp" | "sms" | "email",
-          providerMessageId?: string,
-          vaccineLabel = vaccineNames
-        ) =>
-          ctx.db.insert(communications).values({
-            practiceId: ctx.practiceId,
-            clientId: data.clientId,
-            channel,
-            direction: "outbound",
-            subject: "Vaccination Reminder",
-            content: `Vaccination reminder sent for ${data.patientName}: ${vaccineLabel}`,
-            status: "sent",
-            providerMessageId,
-          });
-
-        const sendEmail = async (): Promise<boolean> => {
-          const clientEmail = normalizeEmailSuppressionAddress(data.clientEmail);
-          if (!clientEmail) return false;
-          if (data.emailSuppressionReason) return false;
-          try {
-            // Send one email per overdue vaccine (the email template handles a single vaccine)
-            for (const vax of data.vaccines) {
-              const result = await sendVaccinationReminder({
-                to: clientEmail,
-                clientName: data.clientName,
-                patientName: data.patientName,
-                vaccineName: vax.vaccineName,
-                dueDate: formatClinicalDate(
-                  vax.nextDueDate,
-                  practice.timezone,
-                  "overdue"
-                ),
-                practiceName: practice.name,
-                practicePhone: practice.phone ?? undefined,
-              });
-              if (!result.success) return false;
-              await logReminder("email", result.id, vax.vaccineName);
-            }
-            return true;
-          } catch {
-            return false;
-          }
-        };
-
-        const channel = pickReminderChannel({
-          preferredContactMethod: data.preferredContactMethod,
-          phone: data.clientPhone,
-          smsConsent: data.smsConsent ?? false,
-          hasEmail: Boolean(normalizeEmailSuppressionAddress(data.clientEmail)),
-          quietHours: false,
-          hasWhatsApp: isKirimdevConfigured(),
-        });
-
-        if (channel === "whatsapp") {
-          const result = await sendVaccinationReminderWA({
-            to: data.clientPhone!,
-            patientName: data.patientName,
-            vaccineName: vaccineNames,
-            practiceName: practice.name,
-            practicePhone: practice.phone ?? undefined,
-          });
-          if (result.success) {
-            await logReminder("whatsapp", result.messageId);
-            sent++;
-            continue;
-          }
-          // WhatsApp failed — fall back to email
-          if (await sendEmail()) {
-            sent++;
-            continue;
-          }
-          failed++;
-          continue;
-        }
-
-        if (channel === "sms") {
-          const smsSender = await getSmsSender();
-          let result: { success: boolean; sid?: string; error?: string };
-          if (smsSender) {
-            try {
-              result = await sendVaccinationReminderSms({
-                to: data.clientPhone!,
-                patientName: data.patientName,
-                vaccineName: vaccineNames,
-                practiceName: practice.name,
-                practicePhone: practice.phone ?? undefined,
-                practiceId: ctx.practiceId,
-                locationId: smsSender.locationId,
-              });
-            } catch (error) {
-              result = {
-                success: false,
-                error:
-                  error instanceof Error
-                    ? error.message
-                    : "Could not send SMS vaccination reminder",
-              };
-            }
-          } else {
-            result = {
-              success: false,
-              error:
-                "Set up an active texting number before sending SMS reminders",
-            };
-          }
-
-          if (result.success) {
-            await logReminder("sms", result.sid);
-            sent++;
-            continue;
-          }
-
-          if (await sendEmail()) {
-            sent++;
-            continue;
-          }
-
-          failed++;
-          continue;
-        }
-
-        if (channel === "email") {
-          if (await sendEmail()) {
-            sent++;
-          } else {
-            failed++;
-          }
-          continue;
-        }
-
-        failed++;
-      }
-
-      return { sent, failed };
+      const result = await sendVaccinationRecallReminders(
+        ctx,
+        input.patientIds,
+      );
+      if (!result) throw practiceNotFound();
+      return result;
     }),
 });

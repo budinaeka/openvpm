@@ -1,4 +1,7 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { mkdtempSync, promises as fs } from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => {
   const send = vi.fn();
@@ -29,6 +32,7 @@ vi.mock("@aws-sdk/s3-request-presigner", () => ({
 const {
   OBJECT_STORAGE_HEALTH_TIMEOUT_MS,
   checkObjectStorageHealth,
+  deleteFile,
   getObject,
   uploadFile,
 } = await import("../s3");
@@ -38,7 +42,17 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 
+beforeEach(() => {
+  // Default every suite to the S3 driver; the local-driver suite overrides.
+  vi.stubEnv("STORAGE_DRIVER", "s3");
+});
+
 describe("S3 uploads", () => {
+  beforeEach(() => {
+    // These suites exercise the S3 driver explicitly.
+    vi.stubEnv("STORAGE_DRIVER", "s3");
+  });
+
   it("trims configured storage env values before creating objects and URLs", async () => {
     vi.stubEnv("S3_ENDPOINT", " https://storage.example ");
     vi.stubEnv("S3_REGION", " us-east-1 ");
@@ -178,6 +192,102 @@ describe("S3 health checks", () => {
     await expect(checkObjectStorageHealth()).resolves.toEqual({
       ok: false,
       detail: "Object storage check failed",
+    });
+  });
+});
+
+describe("local file storage driver", () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    vi.stubEnv("STORAGE_DRIVER", "local");
+    vi.stubEnv("LOCAL_UPLOAD_DIR", "");
+    tmpDir = mkdtempSync(path.join(os.tmpdir(), "openvpm-local-store-"));
+    vi.stubEnv("LOCAL_UPLOAD_DIR", tmpDir);
+  });
+
+  afterEach(async () => {
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  });
+
+  it("writes uploads next to a content-type sidecar and returns a file URL", async () => {
+    const url = await uploadFile(
+      "practice-1/branding/logo.png",
+      Buffer.from("logo"),
+      "image/png",
+    );
+
+    expect(url).toBe(
+      `file://${path.join(tmpDir, "practice-1/branding/logo.png")}`,
+    );
+    const stored = await fs.readFile(
+      path.join(tmpDir, "practice-1/branding/logo.png"),
+    );
+    expect(stored.toString()).toBe("logo");
+    await expect(
+      fs.readFile(
+        path.join(tmpDir, "practice-1/branding/logo.png.content-type"),
+        "utf8",
+      ),
+    ).resolves.toBe("image/png");
+  });
+
+  it("round-trips objects with their stored content type", async () => {
+    await uploadFile(
+      "practice-1/documents/lab.pdf",
+      Buffer.from("pdf"),
+      "application/pdf",
+    );
+
+    await expect(
+      getObject("practice-1/documents/lab.pdf", { maxBytes: 10 }),
+    ).resolves.toEqual({
+      body: Buffer.from("pdf"),
+      contentType: "application/pdf",
+    });
+  });
+
+  it("rejects oversized local objects before buffering", async () => {
+    await uploadFile(
+      "practice-1/documents/big.pdf",
+      Buffer.alloc(11, 1),
+      "application/pdf",
+    );
+
+    await expect(
+      getObject("practice-1/documents/big.pdf", { maxBytes: 10 }),
+    ).resolves.toBeNull();
+  });
+
+  it("returns null for objects outside the upload root", async () => {
+    await expect(
+      getObject("../../etc/passwd"),
+    ).resolves.toBeNull();
+    await expect(getObject("practice-1/branding/../../etc/passwd"))
+      .resolves.toBeNull();
+  });
+
+  it("deletes objects and sidecars", async () => {
+    await uploadFile(
+      "practice-1/branding/old.png",
+      Buffer.from("old"),
+      "image/png",
+    );
+
+    await deleteFile("practice-1/branding/old.png");
+
+    await expect(
+      fs.stat(path.join(tmpDir, "practice-1/branding/old.png")),
+    ).rejects.toThrow();
+    await expect(
+      fs.stat(path.join(tmpDir, "practice-1/branding/old.png.content-type")),
+    ).rejects.toThrow();
+  });
+
+  it("reports local storage health from the upload directory", async () => {
+    await expect(checkObjectStorageHealth()).resolves.toEqual({
+      ok: true,
+      detail: "Local file storage directory reachable",
     });
   });
 });

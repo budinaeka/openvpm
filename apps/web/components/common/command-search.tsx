@@ -19,6 +19,8 @@ import {
   Mail,
   Loader2,
   AlertCircle,
+  FlaskConical,
+  HeartPulse,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 
@@ -64,6 +66,8 @@ const navigationItems: CommandItemConfig[] = [
   { label: "Billing", href: "/billing", Icon: DollarSign, roles: allRoles },
   { label: "Inventory", href: "/inventory", Icon: Package, roles: allRoles },
   { label: "Inbox", href: "/inbox", Icon: Mail, roles: allRoles },
+  { label: "Lab Inbox", href: "/lab-results", Icon: FlaskConical, roles: ["admin", "veterinarian", "technician"] },
+  { label: "Care Reminders", href: "/care-reminders", Icon: HeartPulse, roles: ["admin", "veterinarian", "technician", "front_desk"] },
   { label: "Settings", href: "/settings", Icon: Settings, roles: ["admin"] },
 ];
 

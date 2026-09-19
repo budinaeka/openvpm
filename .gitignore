@@ -18,6 +18,12 @@ dist/
 .env.local
 .env.*.local
 
+# Local file storage uploads (STORAGE_DRIVER=local)
+/uploads/
+apps/web/uploads/
+apps/web/.data/
+.data/
+
 # IDE
 .vscode/
 .idea/
