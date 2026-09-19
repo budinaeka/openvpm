@@ -18,17 +18,17 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/evangauer/openvpm/actions"><img src="https://github.com/evangauer/openvpm/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
+  <a href="https://github.com/budinaeka/openvpm/actions"><img src="https://github.com/budinaeka/openvpm/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL_v3-blue.svg" alt="AGPL v3 License" /></a>
   <a href="CONTRIBUTING.md"><img src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg" alt="PRs Welcome" /></a>
-  <a href="https://github.com/evangauer/openvpm/discussions"><img src="https://img.shields.io/badge/Discussions-join-blue.svg" alt="Discussions" /></a>
-  <a href="https://github.com/evangauer/openvpm/stargazers"><img src="https://img.shields.io/github/stars/evangauer/openvpm?style=social" alt="GitHub Stars" /></a>
+  <a href="https://github.com/budinaeka/openvpm/discussions"><img src="https://img.shields.io/badge/Discussions-join-blue.svg" alt="Discussions" /></a>
+  <a href="https://github.com/budinaeka/openvpm/stargazers"><img src="https://img.shields.io/github/stars/budinaeka/openvpm?style=social" alt="GitHub Stars" /></a>
 </p>
 
 ---
 
 <p align="center">
-  <strong>▶ <a href="https://demo.openvpm.com/login">Try the live demo</a></strong> — one-click logins, no signup. &nbsp;|&nbsp; If you believe veterinary software should be open, <strong><a href="https://github.com/evangauer/openvpm">give us a ⭐</a></strong> — it helps other clinics and builders find the project.
+  <strong>▶ <a href="https://demo.openvpm.com/login">Try the live demo</a></strong> — one-click logins, no signup. &nbsp;|&nbsp; If you believe veterinary software should be open, <strong><a href="https://github.com/budinaeka/openvpm">give us a ⭐</a></strong> — it helps other clinics and builders find the project.
 </p>
 
 ---
@@ -68,6 +68,25 @@ That's the bar we're building to.
 ## Help & Guides
 
 Short, plain-language guides live in [docs/help](docs/help/README.md): getting started, the day sheet, the AI helper, client portals, calendar sync, and owning your data. Switching from another PIMS? Start with [Migrating to OpenVPM](docs/migrating-to-openvpm.md).
+
+## Deployment guides
+
+OpenVPM is self-hostable with or without Docker. The default storage backend is local filesystem storage, so MinIO is optional rather than required.
+
+| Path | Best for | Guide |
+|---|---|---|
+| **Bare-metal Ubuntu / no Docker** | Lightweight VPS production installs | [docs/deployment-bare-metal.md](docs/deployment-bare-metal.md) |
+| **Docker Compose** | Reproducible local evaluation or containerized installs | [docs/deployment-docker.md](docs/deployment-docker.md) |
+| **Storage choices** | Local uploads vs S3/MinIO/R2 | [docs/storage.md](docs/storage.md) |
+
+For a fresh Ubuntu VPS, the assisted no-Docker path is:
+
+```bash
+git clone https://github.com/budinaeka/openvpm.git
+cd openvpm
+sudo bash scripts/setup-prod-ubuntu.sh --domain openvpm.example.com --install-dir /opt/openvpm
+```
+
 
 ## Features
 
@@ -180,6 +199,8 @@ Dashboard procedures include Zod validation and role-based access control throug
 
 ## Quick Start
 
+This path runs the app on your host machine and starts only PostgreSQL with Docker Compose. MinIO is not required because `.env.example` defaults to local filesystem storage.
+
 ### Prerequisites
 
 - Node.js 20+
@@ -189,28 +210,18 @@ Dashboard procedures include Zod validation and role-based access control throug
 ### Setup
 
 ```bash
-# Clone the repository
 git clone https://github.com/budinaeka/openvpm.git
 cd openvpm
-
-# Copy environment config
 cp .env.example .env
 
-# Option A: start PostgreSQL with Docker Compose (app still runs on your host)
+# Start PostgreSQL only. The web app and uploads stay on your host.
 docker compose -f docker/docker-compose.yml up -d postgres
 
-# Install dependencies
 corepack enable
 corepack prepare pnpm@9.15.0 --activate
 pnpm install --frozen-lockfile
-
-# Apply database schema
 pnpm db:push
-
-# Seed with realistic demo data
 pnpm db:seed
-
-# Start the development server
 pnpm dev
 ```
 
@@ -381,7 +392,7 @@ See **[ROADMAP.md](ROADMAP.md)** for what's shipping now, next, and later — an
 ## Community
 
 - **Website:** [openvpm.com](https://openvpm.com)
-- **GitHub Discussions:** [Join the conversation](https://github.com/evangauer/openvpm/discussions)
+- **GitHub Discussions:** [Join the conversation](https://github.com/budinaeka/openvpm/discussions)
 - **Email:** hello@openvpm.com
 
 ## License
